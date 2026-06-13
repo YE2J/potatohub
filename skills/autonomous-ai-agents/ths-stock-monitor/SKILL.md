@@ -149,3 +149,27 @@ from hermes_tools import terminal  # use send_message tool directly
 2. **同花顺可能有关联弹窗** → 截图前检查是否有遮挡
 3. **WeChat 有频率限制** → 消息不要太频繁
 4. **GS信号仅作为参考** → 需要在报告中说明
+
+## 程序化指标计算（推荐）
+
+截图 + Vision 分析的精度有限（依赖OCR和视觉识别）。对于精确的量化分析，推荐用 Python 直接从历史数据计算指标：
+
+1. 加载 `ths-formula-translation` skill 获取通达信公式 → Python 翻译方法
+2. 使用 `data-science/ths-formula-translation/references/ths_indicators.md` 中的 6 大指标实现
+3. 量化回测框架在 `~/Documents/量化回测/` 可用，支持完整的回测引擎
+
+**数据源**：腾讯 ifzq 历史K线API（已验证，日线前复权），见 `ths-formula-translation/references/tencent_data_api.md`。
+
+**导入自选股**：同花顺导出的 `Table.xls` 文件解析方法见 `references/tonghuashun_export_format.md`。
+
+### 程序化 vs 截图对比
+
+| 维度 | 截图+Vision | Python程序化 |
+|------|-----------|------------|
+| 精度 | 依赖OCR，可能有偏差 | 精确到小数点 |
+| 速度 | 慢（截图+Vision分析） | 快（内存计算） |
+| 历史数据 | 只能看当前 | 可回测历史 |
+| 实时性 | 好（盘中截图） | 需数据源更新 |
+| 复杂指标 | 只能看同花顺显示的 | 可自定义计算 |
+
+建议：**盘中监测用截图**，**盘后分析和回测用程序化**。

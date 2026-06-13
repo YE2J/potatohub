@@ -144,14 +144,24 @@ df = scanner.scan(['000001', '600519', '002415'])
 
 ## 数据源
 
-| 数据 | 来源 | 状态 |
-|------|------|------|
-| 日K线（不复权） | 腾讯财经 web.ifzq.gtimg.cn | ✅ |
-| 季度EPS/ROE/营收/经营现金流 | 同花顺 akshare stock_financial_abstract_ths | ✅ |
-| 实时PE/市值/价格 | 腾讯 qt.gtimg.cn | ✅ |
-| 总股本 | 腾讯市值÷价格 | ✅ |
+| 数据 | 来源 | 状态 | 方式 |
+|------|------|------|------|
+| 日K线（不复权） | 腾讯财经 web.ifzq.gtimg.cn | ✅ | 脚本直接HTTP |
+| 季度EPS/ROE/营收/经营现金流 | 同花顺 akshare stock_financial_abstract_ths | ✅ | 脚本akshare |
+| 实时PE/市值/价格 | 腾讯 qt.gtimg.cn | ✅ | 脚本直接HTTP |
+| 总股本 | 腾讯市值÷价格 | ✅ | 脚本计算 |
+| **全量行情+财务数据** | **Tushare MCP (258工具)** | ✅ | Hermes MCP `mcp_tushareMcp_*` |
+| **Python编程访问** | **Tushare Python SDK** | ✅ | `import tushare; pro = ts.pro_api()` |
 
-> 东方财富 push2、雪球 API 在部分网络环境下被阻断，腾讯 + 同花顺两条链路已验证可替代
+> 东方财富 push2、雪球 API 在部分网络环境下被阻断，腾讯 + 同花顺 + Tushare 三条链路已验证可替代。
+
+### Tushare 数据源
+
+用户已配置 Tushare MCP 服务器和 Python SDK：
+- **MCP 工具**：`hermes mcp add tushareMcp --url "https://api.tushare.pro/mcp/?token=..."` — 添加时交互式回答 `n`（无需额外认证）+ `Y`（启用全部258工具）
+- **Python SDK**：已安装 `pip install tushare`，token 已写入 `~/.hermes/.env` 作为 `TUSHARE_TOKEN`
+- 在对话中可直接让 Hermes 调用 `mcp_tushareMcp_daily`、`mcp_tushareMcp_income` 等工具获取数据
+- 查看参考文件 `references/tushare-mcp-setup.md` 了解详细配置和使用示例
 
 ## 参考脚本
 
