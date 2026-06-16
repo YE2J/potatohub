@@ -1,0 +1,42 @@
+{
+  "jobs": [
+    {
+      "id": "83a7d0a78cb1",
+      "name": "PotatoHub Skills \u81ea\u52a8\u5907\u4efd",
+      "prompt": "\u6bcf\u5468\u81ea\u52a8\u5907\u4efd Hermes Skills \u5230 GitHub potatohub \u4ed3\u5e93",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "base_url": null,
+      "script": "potatohub_backup.sh",
+      "no_agent": true,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 0 * * 0",
+        "display": "0 0 * * 0"
+      },
+      "schedule_display": "0 0 * * 0",
+      "repeat": {
+        "times": null,
+        "completed": 1
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-06-13T18:20:51.271737+08:00",
+      "next_run_at": "2026-06-21T00:00:00+08:00",
+      "last_run_at": "2026-06-14T00:01:34.947911+08:00",
+      "last_status": "error",
+      "last_error": "Script exited with code 128\nstdout:\n[main 2134b66] \ud83d\udce6 Skills \u81ea\u52a8\u5907\u4efd 2026-06-14 00:00\n 21 files changed, 2936 insertions(+), 39 deletions(-)\n create mode 100644 skills/autonomous-ai-agents/ths-stock-monitor/references/tonghuashun_export_format.md\n create mode 100644 skills/autonomous-ai-agents/valuation-channel/references/tushare-mcp-setup.md\n create mode 100644 skills/data-science/a-share-backtest-platform/SKILL.md\n create mode 100644 skills/data-science/a-share-backtest-platform/references/tencent-stock-api.md\n create mode 100644 skills/data-science/a-share-backtesting/SKILL.md\n create mode 100644 skills/data-science/a-share-backtesting/references/tencent-api.md\n create mode 100644 skills/data-science/stock-data-formats/SKILL.md\n create mode 100644 skills/data-science/stock-data-formats/references/hd1_day_format.md\n create mode 100644 skills/data-science/stock-data-formats/scripts/ths_day_parser.py\n create mode 100644 skills/data-science/ths-formula-translation/SKILL.md\n create mode 100644 skills/data-science/ths-formula-translation/references/tdx_core_functions.md\n create mode 100644 skills/data-science/ths-formula-translation/references/tencent_data_api.md\n create mode 100644 skills/data-science/ths-formula-translation/references/ths_indicators.md\n create mode 100644 skills/tushare-data/SKILL.md\n create mode 100644 \"skills/tushare-data/references/\\346\\225\\260\\346\\215\\256\\346\\216\\245\\345\\217\\243.md\"\n create mode 100644 skills/tushare-data/scripts/fund_data_demo.py\n create mode 100644 skills/tushare-data/scripts/stock_data_demo.py",
+      "last_delivery_error": null,
+      "deliver": "local",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null
+    }
+  ],
+  "updated_at": "2026-06-14T00:01:34.948868+08:00"
+}

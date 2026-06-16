@@ -146,7 +146,7 @@ df = scanner.scan(['000001', '600519', '002415'])
 
 | 数据 | 来源 | 状态 | 方式 |
 |------|------|------|------|
-| 日K线（不复权） | 腾讯财经 web.ifzq.gtimg.cn | ✅ | 脚本直接HTTP |
+| 日K线（不复权） | 腾讯财经 ifzq.gtimg.cn | ✅ | 脚本直接HTTP |
 | 季度EPS/ROE/营收/经营现金流 | 同花顺 akshare stock_financial_abstract_ths | ✅ | 脚本akshare |
 | 实时PE/市值/价格 | 腾讯 qt.gtimg.cn | ✅ | 脚本直接HTTP |
 | 总股本 | 腾讯市值÷价格 | ✅ | 脚本计算 |
@@ -200,3 +200,57 @@ df = scanner.scan(['000001', '600519', '002415'])
 | ROE含"%"字符串 | 自动解析为浮点数 |
 | EPS季度累积值 | 自动转为单季值再算TTM |
 | 营收含"亿"（如"316.03亿"） | 先 strip("亿"), 再 float(), 单位为亿元 |
+
+## 常见坑点
+
+### 1. 腾讯API域名变更
+`web.ifzq.gtimg.cn` 子域名已全面下线（返回 501/WAF 错误），新域名为 `ifzq.gtimg.cn`（无 `web.` 前缀）。所有引用该 API 的地方均需将 `http://web.ifzq.gtimg.cn` 改为 `https://ifzq.gtimg.cn`。
+
+涉及文件: `scripts/valuation_channel.py` 中的 `get_kline()` 方法。
+
+### 2. matplotlib 在 async Web 服务中挂起
+在 FastAPI/uvicorn 等 async web 进程中直接导入 `valuation_channel` 并调用 `generate()` / `evaluate()` 会导致 matplotlib 静默挂起（无异常、无输出、整个进程卡死）。
+
+**原因**：matplotlib 的 `use('Agg')` backend 与 uvicorn 的事件循环存在交互冲突，具体表现为：
+- `from valuation_channel import X, Y, Z` 一次性导入多个类时可能触发
+- `DataFetcher.get_kline()` 内部的分页循环在某些环境下也会僵死
+
+**解决方案**：将估值计算隔离到独立子进程中运行，不要直接在 Web 服务进程中调用。
+
+```python
+import subprocess, json
+result = subprocess.run(
+    [sys.executable, 'run_valuation_subprocess.py', json.dumps(codes)],
+    capture_output=True, text=True, timeout=300
+)
+# 从 stdout 中解析 ---RESULT_JSON--- 标记之间的 JSON
+```
+
+参考 `references/subprocess-isolation.md` 获取完整实现。
+
+### 3. 腾讯API K线数据含分红字典字段
+`get_kline()` 返回的某些行在第 6 个字段后包含一个字典（分红除权信息）。处理方式：
+```python
+all_rows = [r[:6] for r in all_rows]  # 只取前6个字段，丢弃分红信息
+```
+
+### 4. 腾讯API市场前缀规则
+A股代码的市场前缀规则不止 `6→sh/其余→sz`：
+
+| 股票代码开头 | 市场前缀 | 示例 |
+|-------------|---------|------|
+| 6xxxxx | sh | 600519, 688519 |
+| 5xxxxx | sh | 501018(LOF), 513350(ETF) |
+| 8xxxxx | sh | 830xxx, 87xxxx(北交所) |
+| 9xxxxx | sh | 900xxx(B股) |
+| 0/1/2/3xxxxx | sz | 000001, 300308 |
+
+实现示例：
+```python
+market_prefix = "sh" if stock_code.startswith(("6", "5", "8", "9")) else "sz"
+```
+
+### 5. ValuationAssessor.evaluate() 极慢
+`ValuationAssessor.evaluate()` 因内部多次调用 akshare + matplotlib 多模型计算，**单只股票耗时 ~460 秒**。不适合批量或在线场景。
+
+**快速替代方案**：直接从本地 SQLite 数据库读取已缓存的日线数据，只做 PE 通道计算 + 画图，单只耗时 ~1 秒。参考 `references/simplified-valuation.md` 获取实现。

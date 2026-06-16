@@ -129,6 +129,27 @@ Pick the closest existing category. Don't invent new top-level categories casual
 
 `metadata.hermes.related_skills` unions both trees (`skills/` in-repo and `~/.hermes/skills/`) at load time. You CAN reference a user-local skill from an in-repo skill, but it won't resolve for other users who clone the repo fresh. Prefer referencing only in-repo skills from in-repo skills. If a frequently-referenced skill lives only in `~/.hermes/skills/`, consider promoting it to the repo.
 
+## Importing Third-Party Skills (User-Local)
+
+When importing a collection of pre-made skills from an external source (e.g., a GitHub repo of Claude Code / Cursor / Hermes format skills):
+
+### Workflow
+
+1. **Get raw SKILL.md content** via `web_extract(urls=[raw_url])` — uses cloud backend, works when `git clone` can't reach the host. Pattern: `https://raw.githubusercontent.com/<org>/<repo>/<branch>/skills/<skill-name>/SKILL.md`.
+
+2. **Create each skill**: `skill_manage(action='create', name='<name>', content=content, category='<umbrella>')`. Category groups skills under `~/.hermes/skills/<category>/<name>/`.
+
+3. **Write supporting files** (e.g. `workflows/*.md`) directly with `write_file` to `~/.hermes/skills/<category>/<name>/<path>`. Do NOT use `skill_manage(action='write_file')` for `workflows/` — it only allows `references/`, `templates/`, `scripts/`, `assets/`.
+
+4. **Batch import**: for 10+ skills, use `execute_code` to loop. Download SKILL.md in batches via `web_extract(urls=[...])` (max 5 URLs). Create with `skill_manage`. Watch the 50 tool-call limit.
+
+### Pitfalls
+
+- YAML descriptions with colons break parsing: wrap in quotes `description: "long text: with colons"`.
+- `skill_manage write_file` rejects paths like `workflows/foo.md`. Write to disk directly with `write_file`.
+- When `git clone` fails, use `web_extract` on `raw.githubusercontent.com` URLs or `api.github.com` for dir listings.
+- 50+ files exceed one `execute_code` run — split into multiple executions.
+
 ## Editing Existing In-Repo Skills
 
 - **Small fix (typo, added pitfall, tightened trigger):** `skill_manage(action='patch', name=..., old_string=..., new_string=...)` works fine on in-repo skills.

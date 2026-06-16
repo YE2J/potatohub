@@ -101,7 +101,7 @@ class DataFetcher:
         while seg_start < seg_end:
             s = seg_start.strftime('%Y-%m-%d')
             e = min(seg_start + timedelta(days=540), seg_end).strftime('%Y-%m-%d')
-            url = (f'http://web.ifzq.gtimg.cn/appstock/app/fqkline/get'
+            url = (f'https://ifzq.gtimg.cn/appstock/app/fqkline/get'
                    f'?param={prefixed},{freq},{s},{e},800,')
             try:
                 resp = requests.get(url, headers=headers, timeout=15)

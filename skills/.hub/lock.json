@@ -1,1 +1,19 @@
-{"version": 1, "installed": {}}
+{
+  "version": 1,
+  "installed": {
+    "scrapling": {
+      "source": "official",
+      "identifier": "official/research/scrapling",
+      "trust_level": "builtin",
+      "scan_verdict": "safe",
+      "content_hash": "sha256:d360d73e74744838",
+      "install_path": "research/scrapling",
+      "files": [
+        "SKILL.md"
+      ],
+      "metadata": {},
+      "installed_at": "2026-06-14T13:25:25.618167+00:00",
+      "updated_at": "2026-06-14T13:25:25.618180+00:00"
+    }
+  }
+}

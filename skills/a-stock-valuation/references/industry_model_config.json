@@ -1,0 +1,21 @@
+{
+  "_description": "行业估值模型参数配置，可按需调整",
+  "global_defaults": {
+    "default_wacc": 0.09,
+    "default_terminal_growth": 0.025,
+    "risk_free_rate": 0.025
+  },
+  "industry_overrides": {
+    "银行": { "wacc": 0.085, "terminal_growth": 0.02 },
+    "保险": { "wacc": 0.09, "terminal_growth": 0.02 },
+    "公用事业": { "wacc": 0.07, "terminal_growth": 0.02 },
+    "科技/计算机": { "wacc": 0.10, "terminal_growth": 0.03 },
+    "医药生物": { "wacc": 0.10, "terminal_growth": 0.03 },
+    "食品饮料": { "wacc": 0.09, "terminal_growth": 0.025 },
+    "有色金属": { "wacc": 0.10, "terminal_growth": 0.02 },
+    "煤炭": { "wacc": 0.09, "terminal_growth": 0.02 },
+    "钢铁": { "wacc": 0.10, "terminal_growth": 0.015 },
+    "房地产": { "wacc": 0.10, "terminal_growth": 0.02 },
+    "新能源/电力设备": { "wacc": 0.09, "terminal_growth": 0.03 }
+  }
+}

@@ -29,6 +29,11 @@ People use Hermes for software development, research, system administration, dat
 
 **This skill helps you work with Hermes Agent effectively** — setting it up, configuring features, spawning additional agent instances, troubleshooting issues, finding the right commands and settings, and understanding how the system works when you need to extend or contribute to it.
 
+Skill optimization: for deploying Microsoft's SkillOpt to self-evolve agent skills through validation-gated text-space optimization, see `skill_view(name="hermes-agent", file_path="references/skillopt-setup.md")`.
+
+Provider quirks: DashScope China-endpoint workaround → `skill_view(name="hermes-agent", file_path="references/dashscope-provider-quirks.md")`.
+Multi-model setup: Kanban-based multi-model worker army → `skill_view(name="hermes-agent", file_path="references/multi-model-kanban-setup.md")`.
+
 **Docs:** https://hermes-agent.nousresearch.com/docs/
 
 ## Quick Start

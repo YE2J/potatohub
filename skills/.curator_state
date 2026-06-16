@@ -1,9 +1,9 @@
 {
-  "last_report_path": null,
-  "last_run_at": "2026-06-06T16:44:48.626899+00:00",
-  "last_run_duration_seconds": null,
-  "last_run_summary": "deferred first run — curator seeded, will run after one interval; use `hermes curator run --dry-run` to preview now",
-  "last_run_summary_shown_at": "2026-06-06T16:44:48.626899+00:00",
+  "last_report_path": "/Users/yellow/.hermes/logs/curator/20260613-164609",
+  "last_run_at": "2026-06-13T16:46:09.759355+00:00",
+  "last_run_duration_seconds": 254.240213,
+  "last_run_summary": "auto: no changes; llm: ## Summary\n\nI processed the full list of 77 agent-created skills and identified **3 consolidation clusters** and **2 stale prunings**.\n\n### Consolidation clusters processed:\n\n**1. A-Share Backtesting → `a-share-backtesting`**\n- Source: `a-s…\narchived 6 skill(s):\n  • a-share-backtest-platform → a-share-backtesting\n  • research-paper-writing → arxiv\n  • blogwatcher — pruned (stale)\n  • dogfood — pruned (stale)\n  • stock-data-formats — pruned (stale)\n  • ths-formula-translation — pruned (stale)\nfull report: hermes curator status\nkeep an umbrella stable: hermes curator pin a-share-backtesting",
+  "last_run_summary_shown_at": "2026-06-13T16:46:09.759355+00:00",
   "paused": false,
-  "run_count": 0
+  "run_count": 1
 }

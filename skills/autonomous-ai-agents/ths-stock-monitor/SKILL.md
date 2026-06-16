@@ -1,10 +1,11 @@
 ---
 name: ths-stock-monitor
 description: "通过cua-driver操作Mac版同花顺，截图分析自选股数据，判断买卖信号并推送到微信"
-version: 1.0.0
+version: 1.1.0
 platforms: [macos]
 author: Hermes Agent
 tags: [同花顺, stock, monitoring, computer-use, wechat]
+related_skills: [research/a-share-quant-backtest]
 ---
 
 # 同花顺自选股监控
@@ -57,7 +58,6 @@ echo "WindowID=$WID"
 ### 3. 截图分析
 
 ```bash
-# 截图当前 view
 $CUADRIVER call get_window_state "{\"pid\": $PID, \"window_id\": $WID}" 2>&1 | python3 -c "
 import sys, json, base64
 data = json.load(sys.stdin)
@@ -117,10 +117,9 @@ done
 ### 7. 推送到微信
 
 ```python
-from hermes_tools import terminal  # use send_message tool directly
+# 用 send_message tool 推送
+send_message(target="weixin", message="📊 自选股盘中监测\n...")
 ```
-
-用 `send_message(target="weixin", message=...)` 推送格式化的报告到微信。
 
 ### 报告格式
 
@@ -154,13 +153,10 @@ from hermes_tools import terminal  # use send_message tool directly
 
 截图 + Vision 分析的精度有限（依赖OCR和视觉识别）。对于精确的量化分析，推荐用 Python 直接从历史数据计算指标：
 
-1. 加载 `ths-formula-translation` skill 获取通达信公式 → Python 翻译方法
-2. 使用 `data-science/ths-formula-translation/references/ths_indicators.md` 中的 6 大指标实现
-3. 量化回测框架在 `~/Documents/量化回测/` 可用，支持完整的回测引擎
-
-**数据源**：腾讯 ifzq 历史K线API（已验证，日线前复权），见 `ths-formula-translation/references/tencent_data_api.md`。
-
-**导入自选股**：同花顺导出的 `Table.xls` 文件解析方法见 `references/tonghuashun_export_format.md`。
+1. 加载 `research/a-share-quant-backtest` skill 获取完整量化回测框架
+2. 参考 `research/a-share-quant-backtest/references/ths_indicators_guide.md` 获取6个指标的精确Python翻译
+3. 完整回测系统在 `~/Documents/量化回测/`，支持直接从腾讯数据源计算指标和运行规则引擎策略
+4. 数据源文档见 `research/a-share-quant-backtest/references/tencent_data_api.md`
 
 ### 程序化 vs 截图对比
 
