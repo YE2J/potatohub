@@ -17,101 +17,32 @@ import sys
 import json
 import argparse
 import subprocess
-import math
-import pandas as pd
-import numpy as np
-import akshare as ak
+import os
+
+# 导入共享数据模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from data_fetcher import (
+    get_stock_name, get_stock_price, get_shares_outstanding,
+    get_stock_industry_name, get_market_cap, get_pe_ratio, get_pb_ratio,
+    get_financial_data_from_json
+)
 
 
 # ============================================================
 # 估值计算核心函数
 # ============================================================
 
-def get_stock_name(stock_code: str) -> str:
-    """获取股票名称"""
-    try:
-        info = ak.stock_individual_info_em(symbol=stock_code)
-        if isinstance(info, pd.DataFrame):
-            name_row = info[info[info['item'] == '股票简称']]
-            if len(name_row) > 0:
-                return name_row['value'].values[0]
-    except Exception:
-        pass
-    return stock_code
-
+# get_stock_name / get_stock_price / get_shares_outstanding 已从 data_fetcher 导入
 
 def get_latest_price(stock_code: str) -> float:
-    """获取最新股价"""
-    try:
-        df = ak.stock_zh_a_hist(symbol=stock_code, period='daily', adjust='qfq')
-        if len(df) > 0:
-            return float(df.iloc[-1]['收盘'])
-    except Exception:
-        pass
-    return 0.0
+    """获取最新股价（别名，兼容内部调用）"""
+    return get_stock_price(stock_code)
 
 
-def get_financial_data(stock_code: str):
-    """获取财务报表原始数据"""
-    try:
-        balance = ak.stock_balance_sheet_by_yearly_em(symbol=stock_code)
-        income = ak.stock_profit_sheet_by_yearly_em(symbol=stock_code)
-        cashflow = ak.stock_cash_flow_sheet_by_yearly_em(symbol=stock_code)
-        return balance, income, cashflow
-    except Exception as e:
-        print(f"获取财务数据失败: {e}")
-        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
 
-def safe_float(val, default=0.0):
-    """安全转换为float"""
-    try:
-        if val is None or (isinstance(val, float) and math.isnan(val)):
-            return default
-        return float(val)
-    except (ValueError, TypeError):
-        return default
 
 
-def extract_recent_financials(balance_df, income_df, cashflow_df):
-    """提取最近一期和最近5年的关键财务数据"""
-    result = {}
-
-    # 按报告期排序
-    for df in [balance_df, income_df, cashflow_df]:
-        if len(df) > 0 and '报告期' in df.columns:
-            df = df.sort_values('报告期')
-
-    # 最近一期数据
-    if len(income_df) > 0:
-        latest = income_df.iloc[-1]
-        result["revenue"] = safe_float(latest.get('营业收入'))
-        result["net_profit"] = safe_float(latest.get('净利润'))
-        result["operating_cost"] = safe_float(latest.get('营业成本'))
-
-    if len(balance_df) > 0:
-        latest_bs = balance_df.iloc[-1]
-        result["total_assets"] = safe_float(latest_bs.get('资产总计'))
-        result["total_equity"] = safe_float(latest_bs.get('股东权益合计'))
-        result["total_liabilities"] = safe_float(latest_bs.get('负债合计'))
-
-    if len(cashflow_df) > 0:
-        latest_cf = cashflow_df.iloc[-1]
-        result["operating_cf"] = safe_float(latest_cf.get('经营活动产生的现金流量净额'))
-        result["capex"] = safe_float(latest_cf.get('购建固定资产、无形资产和其他长期资产支付的现金'))
-        result["fcf"] = result["operating_cf"] + result["capex"]  # capex为负
-
-    # 计算ROE
-    if result.get("total_equity", 0) > 0 and result.get("net_profit", 0) > 0:
-        result["roe"] = result["net_profit"] / result["total_equity"]
-
-    # 计算增长率（最近3年CAGR）
-    if len(income_df) >= 4:
-        recent_np = income_df.tail(4)['净利润'].apply(safe_float).values
-        if recent_np[0] > 0 and recent_np[-1] > 0:
-            years = 3
-            cagr = (recent_np[-1] / recent_np[0]) ** (1 / years) - 1
-            result["net_profit_cagr_3y"] = cagr
 
     if len(income_df) >= 4:
         recent_rev = income_df.tail(4)['营业收入'].apply(safe_float).values
@@ -121,34 +52,6 @@ def extract_recent_financials(balance_df, income_df, cashflow_df):
     return result
 
 
-def get_shares_outstanding(stock_code: str) -> float:
-    """获取总股本（亿股）"""
-    try:
-        info = ak.stock_individual_info_em(symbol=stock_code)
-        if isinstance(info, pd.DataFrame):
-            row = info[info['item'] == '总股本']
-            if len(row) > 0:
-                val = row['value'].values[0]
-                if isinstance(val, str):
-                    val = val.replace('亿', '').replace('万', '')
-                    val = float(val)
-                    if '万' in str(row['value'].values[0]):
-                        val = val / 10000
-                return float(val)
-    except Exception:
-        pass
-    # 降级：用市值/股价反推
-    try:
-        price = get_latest_price(stock_code)
-        market_cap_df = ak.stock_zh_a_spot_em()
-        row = market_cap_df[market_cap_df['代码'] == stock_code]
-        if len(row) > 0:
-            total_cap = safe_float(row.iloc[0].get('总市值', 0))
-            if total_cap > 0 and price > 0:
-                return total_cap / price / 1e8
-    except Exception:
-        pass
-    return 0.0
 
 
 # ============================================================
@@ -168,9 +71,10 @@ def pe_valuation(financials: dict, price: float, params: dict) -> dict:
     pe_high = params.get("pe_threshold_overvalue", 30)
     pe_mid = (pe_low + pe_high) / 2
 
-    growth_rate = financials.get("net_profit_cagr_3y", params.get("default_growth_rate", 0.10))
-    # PEG=1时的合理PE
+    growth_rate = financials.get("net_profit_cagr_3y") or params.get("default_growth_rate") or 0.10
+    # PEG=1时的合理PE，但不低于行业低估阈值（避免低增长高ROE公司被过度惩罚）
     peg_fair_pe = growth_rate * 100 if growth_rate > 0 else pe_mid
+    peg_fair_pe = max(peg_fair_pe, pe_low)  # 地板保护
 
     value_low = eps * min(pe_low, peg_fair_pe * 0.8)
     value_mid = eps * peg_fair_pe
@@ -234,7 +138,7 @@ def dcf_valuation(financials: dict, price: float, params: dict) -> dict:
     内在价值 = Σ(FCF_t / (1+WACC)^t) + 终值/(1+WACC)^n
     """
     wacc = params.get("default_wacc", 0.09)
-    growth_rate = financials.get("net_profit_cagr_3y", params.get("default_growth_rate", 0.12))
+    growth_rate = financials.get("net_profit_cagr_3y") or params.get("default_growth_rate") or 0.12
     terminal_growth = params.get("terminal_growth_rate", 0.03)
     shares = params.get("shares_outstanding", 0) or 1
 
@@ -324,7 +228,7 @@ def peg_valuation(financials: dict, price: float, params: dict) -> dict:
     PEG估值法
     合理PE = 增长率 × 100（PEG=1时）
     """
-    growth_rate = financials.get("net_profit_cagr_3y", params.get("default_growth_rate", 0.15))
+    growth_rate = financials.get("net_profit_cagr_3y") or params.get("default_growth_rate") or 0.15
     shares = params.get("shares_outstanding", 0) or 1
 
     net_profit = financials.get("net_profit", 0)
@@ -486,9 +390,8 @@ def main():
     # 获取行业模型配置
     industry_config = run_industry_mapper(stock_code)
 
-    # 获取财务数据
-    balance_df, income_df, cashflow_df = get_financial_data(stock_code)
-    financials = extract_recent_financials(balance_df, income_df, cashflow_df)
+    # 获取财务数据（从 Hermes JSON）
+    financials = get_financial_data_from_json(stock_code)
     shares = get_shares_outstanding(stock_code)
 
     # 构建参数
@@ -588,6 +491,34 @@ def main():
     else:
         print(f"  无法生成估值结论，请检查数据获取是否正常")
 
+    # 机构验证层
+    inst = financials.get("institutional", {})
+    if inst:
+        print(f"\n{'─'*60}")
+        print(f"  机构验证（恒生聚源 180天窗口）")
+        print(f"{'─'*60}")
+        rt = inst.get("rating", {})
+        if rt:
+            print(f"  评级: {rt.get('buy',0)}买 {rt.get('add',0)}增 {rt.get('neutral',0)}中性 | "
+                  f"共{rt.get('total',0)}次 标准分{rt.get('std_score','?')} | {rt.get('org_count',0)}家机构")
+        tp = inst.get("target_price", {})
+        if tp and tp.get("median"):
+            tp_dev = (tp["median"] / price - 1) * 100 if price > 0 else 0
+            print(f"  目标价: 均价{tp['avg']:.2f} | 中位数{tp['median']:.2f} | 偏差{tp_dev:+.1f}% | {tp.get('org_count',0)}家机构")
+        eps = inst.get("eps_forecast", [])
+        if eps:
+            parts = []
+            for ep in eps[:3]:
+                yoy_str = f" 增速{ep['np_yoy']:.1f}%" if ep.get('np_yoy') is not None else ""
+                parts.append(f"{ep['level']} EPS={ep['eps_avg']:.2f}{yoy_str} ({ep['inst_count']}家)")
+            print(f"  盈利预测: {' | '.join(parts)}")
+        # 机构 vs 自有估值交叉验证
+        tp_median = tp.get("median")
+        if tp_median and primary_result and "error" not in primary_result:
+            own_mid = primary_result["value_mid"]
+            tp_vs_own = (tp_median / own_mid - 1) * 100 if own_mid > 0 else 0
+            print(f"  交叉验证: 机构目标{tp_median:.2f} vs 自有估值{own_mid:.2f} → 机构比自有高{tp_vs_own:+.1f}%")
+
     print(f"{'='*60}\n")
 
     # 输出JSON
@@ -604,6 +535,11 @@ def main():
             "cagr_3y": round(financials.get("net_profit_cagr_3y", 0) * 100, 1) if financials.get("net_profit_cagr_3y") else None,
         },
         "valuation_results": all_results,
+        "institutional_validation": {
+            "rating": inst.get("rating") if inst else None,
+            "target_price": inst.get("target_price") if inst else None,
+            "eps_forecast": inst.get("eps_forecast") if inst else None,
+        } if inst else None,
     }
 
     if args.json or args.output:

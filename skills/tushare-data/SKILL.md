@@ -159,6 +159,29 @@ requirements:
 
 ***
 
+## 权限边界（2026-06-20 实测确认）
+
+⚠️ Tushare 接口分基础权限和增值权限。以下接口需要高积分（2000+），**当前不可用**：
+
+| 接口 | 功能 | 状态 |
+|------|------|------|
+| `moneyflow` | 个股资金流向（超大/大/中/小单） | ❌ 40203 无权限 |
+| `fina_indicator` | 财务指标（ROE/毛利率/净利率等） | ❌ 40203 无权限 |
+| `stk_surv` | 机构调研 | ❌ 40203 无权限 |
+
+以下接口**基础权限可用**：
+
+| 接口 | 功能 |
+|------|------|
+| `daily` | 日线行情（OHLCV） |
+| `stk_mins` | 分钟K线（1/5/15/30/60min） |
+| `income` / `balancesheet` / `cashflow` | 三大报表 |
+| `daily_basic` | 日估值指标（PE/PB/PS） |
+| `research_report` / `report_rc` | 研报/盈利预测 |
+| `stock_basic` / `trade_cal` | 基础信息/交易日历 |
+
+**在使用前必须先查询接口权限状态，不要假设可用。** 增值接口不可用时优先走问财 OpenAPI 或 akshare 替代。
+
 ## Environment check
 
 在真正请求数据之前，先做前置校验：

@@ -16,7 +16,7 @@ Two modes:
 ## Installation (macOS)
 
 ```bash
-# Clone (Karing proxy may be needed for GitHub access)
+# Clone
 cd ~/code && git clone https://github.com/microsoft/SkillOpt.git
 
 # Python venv — Homebrew Python 3.11/3.12 may have broken ensurepip.
@@ -134,7 +134,7 @@ Config: `configs/_base_/default.yaml` (4 epochs, lr=4, batch_size=40, gate on).
 
 - **Python venv**: Homebrew Python on macOS 26 may have broken `ensurepip`/`pyexpat`.
   Use `uv venv --python 3.12` instead of `python3 -m venv`.
-- **Git proxy**: if `git config http.proxy` points to a dead proxy (e.g. `127.0.0.1:18789`),
+- **Git proxy**: if `git config http.proxy` points to a dead proxy,
   clone with `git -c http.proxy= -c https.proxy= clone <url>`.
 - **DeepSeek model name**: specify `deepseek-chat` or `deepseek-reasoner` — the
   actual deployed model is auto-selected by DeepSeek.

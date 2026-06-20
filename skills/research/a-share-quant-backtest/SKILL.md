@@ -236,12 +236,14 @@ sharpe = np.sqrt(245) * excess_daily / std_dr
 | 表 | 行数 | 说明 |
 |----|------|------|
 | `daily_kline` | 44,470 | 307只股票日线 |
-| `moneyflow_daily` | 215+ | 99只自选股主力/大单/中单/小单资金流（东方财富API） |
+| `moneyflow_daily` | ~730+ | 99只自选股主力/大单/中单/小单资金流（东方财富API，日增量更新） |
 | `minute_kline` | 243,435 | 1分钟线 |
 | `minute5_kline` | 58,176 | 5分钟线 |
 | `v4_backtest_results` | — | v4回测结果（bridge.py写入） |
 | `backtest_results` | 3 | 旧 backtrader 回测结果 |
 | `valuation_results` | 6 | 估值分析结果 |
+| `watchlist` | 327 | 🆕 自选股主数据源（stock_code + group_id 联合主键） |
+| `wl_groups` | 2 | 🆕 自选股分组元数据（group_id PK, group_name, created_at） |
 | 其他 | — | 股本结构、股东户数、ROE、营收、REITs、可转债 |
 
 **moneyflow_daily 资金流管线**：
@@ -250,16 +252,50 @@ sharpe = np.sqrt(245) * excess_daily / std_dr
 - Cron job `209c43908019`：每日 18:30 拉取 STOCKS_V4 全部 99 只股票最新 3 日资金流
 - 字段映射：f52=主力净流入, f53=超大单净流入, f54=大单净流入, f55=中单净流入, f56=小单净流入
 - `web_extract` 取得原始 JSON 上限约 50 行（lmt>50 会被 LLM 摘要而非返回原始数据）
-| 其他 | — | 股本结构、股东户数、ROE、营收、REITs、可转债 |
 
 每日 cron job (`fda7975b8524`) 自动增量更新。新增自选股后下次 cron 运行时会自动补全历史数据。
 
 ### 添加自选股
 
+**数据流**：SQLite 为主数据源，JSON 为自动导出快照。
+
+```
+增删自选股 → Web UI / CLI → SQLite (watchlist + wl_groups)
+                              → _wl_export_db_to_json()
+                                → watchlist.json (给人看 + Git diff)
+```
+
 1. `config.py` → `STOCKS_V4` dict 新增 `"代码": "名称"`
-2. `bridge.py --sync-watchlist` 同步到 `web_data/watchlist.json`
+2. `bridge.py --sync-watchlist` → 同时写 SQLite + JSON（`_sync_watchlist_to_db()`）
 3. 下次 cron job 运行时会自动拉取该股历史数据
 4. 更新 Hermes memory 中的自选股列表
+
+**SQLite 表结构**：
+
+```sql
+-- 分组元数据
+wl_groups (group_id TEXT PK, group_name TEXT, created_at TEXT)
+
+-- 自选股（支持多分组）
+watchlist (stock_code TEXT, group_id TEXT, stock_name TEXT, group_name TEXT, added_at TEXT,
+           PRIMARY KEY (stock_code, group_id))
+```
+
+**常用 SQL**：
+```sql
+-- 查默认自选股
+SELECT stock_code, stock_name FROM watchlist WHERE group_id = 'default';
+
+-- 自选股 + 最新K线 JOIN
+SELECT w.stock_code, w.stock_name, k.close
+FROM watchlist w LEFT JOIN daily_kline k ON w.stock_code = k.stock_code
+WHERE w.group_id = 'default' AND k.date = (SELECT MAX(date) FROM daily_kline WHERE stock_code = w.stock_code);
+```
+
+**核心函数**（`app/main.py`）：
+- `_wl_db_add_stock()` / `_wl_db_remove_stock()` — 增删股票，自动导出 JSON
+- `_wl_db_add_group()` / `_wl_db_rename_group()` / `_wl_db_delete_group()` — 分组管理
+- `_wl_export_db_to_json()` — SQLite → JSON 双向桥，每次写操作后自动调用
 
 无需手动 `fetch_daily_kline` — cron job 自动处理。
 
@@ -269,8 +305,8 @@ sharpe = np.sqrt(245) * excess_daily / std_dr
 2. **v4 主力线连降参数敏感** — 连降天数2→4使收益率从+9%跳到+230%，必须逐个参数调
 3. **venv 是 Python 3.9**（不是 3.11）— `data_manager.py` 的 `__pycache__` 中有 `.cpython-311.pyc` 混入，但不影响运行
 4. **Cron 脚本必须用 shell wrapper** — 系统 Python 缺少 pandas，`.py` 脚本必须通过 `daily_update_v2.sh`（在 `~/.hermes/scripts/`）包装，显式调用 `.venv/bin/python`。✅ 已修复，当前 cron `last_status: ok`。
-5. **Git push 代理降级** — git 全局配置了 Karing 代理，定时任务运行时代理未必在线。push 脚本已有降级 fallback（直连）
-6. **东财API网络限制 + moneyflow_daily 已填充**：暗盘资金/主力持仓可从降级模式切换到完整模式。数据源：东方财富 `push2his.eastmoney.com`。本地 curl/Python urllib 能完成 TLS 握手但服务器返回空回复；Hermes 中继 `web_extract` 可正常访问，需 `lmt≤50` + `fmt=json` 获取原始 JSON。增量更新由 cron `209c43908019` 每日 18:30 自动执行。详见 `references/moneyflow_pipeline.md`。
+5. **Git push 代理** — 国内 GitHub 直连可能超时，push 脚本有直连 fallback
+- 东财API网络限制 + moneyflow_daily 已填充：暗盘资金/主力持仓可从降级模式切换到完整模式。数据源：东方财富 `push2his.eastmoney.com`。本地 curl/Python urllib 能完成 TLS 握手但服务器返回空回复；Hermes 中继 `web_extract` 可正常访问，需 `lmt≤50` + `fmt=json` 获取原始 JSON。增量更新由 cron `209c43908019` 每日 18:30 自动执行。处理管线脚本：`scripts/process_moneyflow.sh`（jq+awk→sqlite3，Cron环境可用）。详见 `references/moneyflow_pipeline.md`。
 
 ## 亏损诊断流程
 

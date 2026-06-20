@@ -127,6 +127,7 @@ See `references/ths-formula-translation.md` for the complete TDX formula → Pyt
 See `references/tencent_data_api.md` for the Tencent K-line API endpoint and parameters.
 See `references/tdx_core_functions.md` for the TDX→Python function reference.
 See `references/ths_indicators.md` for specific indicator translations.
+See `references/eastmoney_moneyflow_api.md` for the East Money moneyflow (资金流) API — batch ingestion of 主力资金流向 data into the `moneyflow_daily` table. Only works via `web_extract`; local curl/Python requests are blocked. Use `lmt=3` (not >50) to avoid summarization.
 
 ## File Format Reference
 
@@ -212,6 +213,9 @@ CREATE TABLE minute_kline (
 - **Minute data has TWO price formats**: int24 (÷10000 + 0xc0) for small values, int32 (÷1000000) for large. Auto-detect via `detect_format()` — never hardcode
 - **Minute record stride is 152 bytes**, not 48 (48B data + 104B padding). Data at offset 320, not 180/192 like daily
 - **Do NOT mix daily and minute data** in the same table — user requires separate tables (`daily_kline` vs `minute_kline`)
+- **East Money API ~10% 504 timeout** via web_extract (Firecrawl upstream). Batch 4 URLs per call (not 5) to limit blast radius; retry individually, not the whole batch. 3rd retry failure → skip + report
+- **Cron mode: `execute_code` blocked** — do not rely on `execute_code` for cron data pipelines. Use `write_file` to stage scripts, then `terminal` to run them
+- **Cron mode: `python3` blocked on macOS** — TCC sandbox prevents executing any Python binary (`/usr/bin/python3`, Homebrew, venv) in cron. Use `sqlite3` CLI + `jq` + `curl` instead. The CSV → sqlite3 `.import` pattern (see `hermes-macos-sandbox` skill) handles bulk DB writes without Python.
 - **Incremental import filters in Python** before hitting SQLite: read all existing (stock_code, date/seq) pairs into memory, then skip them. This avoids sending duplicate data to the DB at all
 
 ## Scripts
@@ -221,5 +225,6 @@ CREATE TABLE minute_kline (
 - `scripts/ths_min_convert.py` — Multi-process batch .min/.mn5 → CSV + DB import, auto-detects int24/int32 price format, supports --ext and --table for different minute granularities
 - `scripts/ths_finance_parser.py` — hd1.0 `.财经` financial data parser (revenue, ROE, shareholders, capital structure, etc.)
 - `scripts/ths_import_to_db.py` — CSV → SQLite database importer with incremental mode
+- `scripts/eastmoney_moneyflow_import.py` — Parse East Money moneyflow raw web_extract output files and import into `moneyflow_daily` table. See `references/eastmoney_moneyflow_api.md` for the full pipeline.
 
 All scripts work with Python 3 stdlib only (no pandas/akshare required for basic conversion). The import script uses optional `pandas` when `--parquet` is specified.

@@ -24,17 +24,46 @@ ModuleNotFoundError: No module named 'pandas'
 - Cron job: `fda7975b8524`
 - `deliver=origin`（成功/失败都推送微信）
 
-## Git Push 代理降级
+## Git Push 代理问题
 
-**问题**：git 全局配置了代理（`http.proxy=http://127.0.0.1:18789` → Karing），定时任务运行时代理可能不在线，导致 `git push` 失败：`Proxy CONNECT aborted`。
+**问题**：国内网络环境下 GitHub 直连可能超时。定时任务运行时如果依赖代理而上游代理不在线，`git push` 立即失败（connection refused）。`||` 降级链在 `set -e` + 子 shell 的环境下也可能提前退出，exit code 128。
 
-**修复**：push 命令加降级链：
+**修复**：从 `~/.git-credentials` 提取 token，拼入 URL 直连推送（完全绕过代理和 credential helper 依赖）：
 ```bash
-git push origin main 2>&1 || \
-git -c http.proxy= -c https.proxy= push origin main 2>&1 || true
+GIT_TOKEN=*** -o 'ghp_[^@]*' "$HOME/.git-credentials" 2>/dev/null | head -1)
+if [ -n "$GIT_TOKEN" ]; then
+    git -c http.proxy= -c https.proxy= push "https://YE2J:${GIT_TOKEN}@github.com/YE2J/potatohub.git" main
+else
+    git -c http.proxy= -c https.proxy= push origin main
+fi
 ```
 
-## 日常巡检
+⚠️ `credential.helper=osxkeychain` 在 cron 非交互环境下通常无法访问 macOS Keychain，即使 `store` cache 了 token 也可能因为代理先拦截而失败。Token-in-URL 是最可靠的方案。
+
+## 备份脚本：损坏 symlink 防护
+
+**问题**：`cp -r` 遇到损坏的 symlink（目标已删除）直接报错退出，`set -e` 下整个脚本中断。
+
+**修复**：
+```bash
+cp -R -L "$SKILLS_DIR" "$BACKUP_DIR/skills" 2>/dev/null || true
+```
+`-L` 选项跟随 symlink（损坏的不复制），`|| true` 容忍残余错误。
+
+诊断：`file /path/to/symlink` → `broken symbolic link to ...` 可快速定位。`find ~/.hermes/skills -type l ! -exec test -e {} \; -print` 批量检测。
+
+## Cron 故障诊断流程
+
+当 `last_status: "error"` 时按此顺序排查：
+
+1. **查输出** — `~/.hermes/cron/output/<job_id>/<timestamp>.md` 看 stdout 和 exit code
+2. **区分原因**：
+   - `exit code 128`（git）→ 代理/认证问题，检查 `git config --global --get http.proxy` 是否设置了死代理
+   - `exit code 1`（Python）→ 依赖缺失/脚本语法错误，手动 `python script.py` 复现
+   - `exit code 124`（timeout）→ 网络不通/API 挂了
+3. **复现** — 用 `cronjob run <job_id>` 触发一次，等 30s 查状态
+4. **如果修复涉及脚本** — 修完后手动 `bash script.sh` 跑一遍确认，再用 `cronjob run` 验证
+5. **确认恢复** — `cronjob list` 看到 `last_status: "ok"` + `last_run_at` 是最新时间
 
 - `cronjob list` 查看定时任务状态
 - 两个 cron job：

@@ -131,6 +131,35 @@ IWENCAI_API_KEY="sk-proj-..."
 
 **请求体**：`{"query": "查询语句", "page": "1", "limit": "10", "is_cache": "1", "expand_index": "true"}`
 
+### API 响应结构（关键坑点）
+
+**响应中实际数据在 `datas` 键下（复数），不是 `data`**：
+
+```json
+{
+  "QTime": 4650,
+  "query": "...",
+  "columns": [...],
+  "datas": [                         ← 注意：是 datas，不是 data！
+    {"股票代码": "000988.SZ", "股票简称": "华工科技", "收盘价[20260617]": 170.51}
+  ],
+  "row_count": 3,
+  "status_code": 0
+}
+```
+
+**股票代码带后缀**：返回的 `股票代码` 字段格式为 `000988.SZ` / `600519.SH` / `830799.BJ`，使用时需 `strip('.SZ/.SH/.BJ')`。
+
+**字段名带日期戳**：动态字段如 `收盘价[20260617]` 随查询日期变化，提取时需遍历 key 或用 `if '收盘价' in k` 匹配前缀。
+
+### 批量查询模式
+
+```python
+# 批量查行情：逗号分隔代码即可
+query = '000988,600519,301338 最新价 涨跌幅 股票简称 总市值 市盈率'
+# 单批建议 ≤30 只，请求间 sleep(0.3~0.5) 避免限流
+```
+
 ## 技能内容结构
 
 安装的技能是 OpenClaw 格式的 Markdown，包含：
@@ -173,7 +202,31 @@ IWENCAI_API_KEY="sk-proj-..."
 | 盈利预期修正分析 → | `a-share-research` | 分析师修正动量 |
 | 市场情绪分析 → | `a-share-quant-backtest` | 情绪过滤层 |
 | 分钟级数据分析 → | `a-share-quant-backtest` | Tushare数据通道 |
+| hithink-market-query → | `a-share-valuation` + daily_kline | **主力行情数据源**，优于腾讯/akshare |
+| hithink-finance-query → | `a-share-valuation` | 财务数据首选 |
 | hithink-management-query → | `a-share-research` | 股本/股东/高管查询 |
+
+### 数据源优先级（本用户环境）
+
+经 2026-06-17 三 Agent 讨论 + 实测验证：
+
+```
+① 问财 OpenAPI (hithink-market-query) — 官方数据，当日更新，无反爬 ✅ 主力
+② 腾讯 qt.gtimg.cn — 稳定，无频率限制，但仅行情/PE/PB（GBK 编码，需 decode('gbk')）
+③ akshare — 同花顺爬虫，本机网络不稳（频繁 Connection aborted）
+④ 东方财富 push2 — 已不可用（2026-06-11 验证）
+```
+
+**ETF 名称 GBK 陷阱**：腾讯 API 返回的 ETF 名称是 GBK 编码，直接写入 SQLite 会生成乱码字节，导致 Python `sqlite3` 后续读取时报 `Could not decode to UTF-8`。ETF 名称优先用问财，缺失时用 sqlite3 CLI（而非 Python）手动 UPDATE。
+
+**API 响应字段映射**：
+
+| 问财字段 | 含义 | 转换 |
+|----------|------|------|
+| `股票代码` | 如 `600519.SH` | strip `.SH/.SZ/.BJ` |
+| `收盘价[日期]` | 动态 key | 前缀匹配 `if '收盘' in k` |
+| `成交量[日期]` | 单位：股 | `/100.0` → 手 |
+| `最新涨跌幅` | 单位：% | 直接使用 |
 
 ## 已安装的技能
 
@@ -182,6 +235,11 @@ IWENCAI_API_KEY="sk-proj-..."
 
 ## 参考文件
 
-- `references/skillhub-catalog.md` — 完整技能目录（官方24个 + 社区67个），含与 Hermes 系统的匹配建议
-- `references/installed-skills.md` — 已安装技能完整清单（15个），含安装日期、类型、对应 Hermes 原生翻译版
-- `references/hithink-openapi.md` — Hithink OpenAPI 调用规范：端点/认证/请求头/响应解析
+- `references/skillhub-catalog.md` — 完整技能目录（官方24个 + 社区67个）
+- `references/installed-skills.md` — 已安装技能清单（15个）
+- `references/hithink-openapi.md` — Hithink OpenAPI 调用规范
+- `references/iwencai-ohlcv.md` — 🆕 批量 OHLCV 同步：8 个关键坑点 + 完整脚本模板
+- `references/batch-market-sync.md` — 🆕 每日 cron 行情同步：问财替代 akshare 的部署方案
+- `references/batch-market-sync.md` — 批量行情同步脚本模板：从问财 API 拉到 SQLite daily_kline 的完整示例
+- `references/iwencai-ohlcv.md` — 完整 OHLCV 同步：datas 键、代码后缀、日期戳字段、成交量单位、批大小限制等 8 个关键坑点
+- `references/system-architecture-roadmap.md` — 🆕 最终架构路线图：5 项数据覆盖方案、Coze 角色重定义、OpenClaw 判断、Phase 1/2/3 执行路线

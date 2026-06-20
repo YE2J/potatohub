@@ -323,6 +323,27 @@ When executing, use the `subagent-driven-development` skill:
 - Code quality review after spec passes
 - Proceed only when both reviews approve
 
+## Review-Driven Implementation (评审驱动实施)
+
+When the task involves system design, architecture changes, or reliability-critical components, the user prefers a **plan → review → approve → implement** workflow. Do NOT jump to writing code until the plan has been reviewed.
+
+**Default sequence for complex tasks:**
+1. **Write plan** — save to `.hermes/plans/` with complete architecture, assumptions, and tasks
+2. **Multi-agent review** — dispatch 2-3 agents in parallel with different perspectives (reliability / architecture / feasibility) to review the plan
+3. **External review** — if another system is involved (e.g., Coze), send the plan to that system for review too
+4. **Present to user** — consolidate reviews, highlight blocking issues, ask user to decide
+5. **Implement** — only after user approves the revised plan
+
+**Multi-agent review perspectives (typical split):**
+- **SRE/可靠性** — failure modes, thresholds, race conditions, restart storms, monitoring gaps
+- **Architecture/设计** — coupling, complexity, single points of failure, extensibility, simpler alternatives
+- **Implementation/可行性** — command availability, environment constraints, sandbox limitations, path correctness
+
+**After reviews come back:**
+- Consolidate into a summary table (blocking / high-risk / low-risk)
+- Ask the user which direction to take before rewriting the plan
+- If blocking issues are found (commands don't work, frequency limits incompatible), fix the plan immediately — don't leave known-broken assumptions in the document
+
 ## Remember
 
 ```

@@ -7,7 +7,7 @@ license: MIT
 metadata:
   hermes:
     tags: [skillopt, training, agent-skills, optimization, deepseek, benchmarks]
-    related_skills: [karing-proxy]
+    related_skills: []
 ---
 
 # SkillOpt — Training Agent Skills
@@ -97,7 +97,7 @@ uv pip install -e .
 ```
 
 ### GitHub access
-If `git clone` fails with "Proxy CONNECT aborted", check for stale git proxy config (`git config --global --get http.proxy`). Bypass with `git -c http.proxy= -c https.proxy= clone ...`. Open Karing first if GitHub is unreachable (see karing-proxy skill).
+If `git clone` fails with "Proxy CONNECT aborted", check for stale git proxy config (`git config --global --get http.proxy`). Bypass with `git -c http.proxy= -c https.proxy= clone ...`.
 
 ## SkillOpt-Sleep
 

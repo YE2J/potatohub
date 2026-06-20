@@ -7,6 +7,10 @@ A股财务数据获取脚本
 - 自动清洗和格式化数据
 - 支持输出为JSON供下游脚本调用
 
+数据来源：
+- 实时行情/行业：Hermes web_extract JSON（data/ 目录）
+- 财务三大报表：akshare（需 Mac 本地 akshare 可用）
+
 用法：
   python get_financials.py 600519
   python get_financials.py 000858 --format json
@@ -16,36 +20,14 @@ A股财务数据获取脚本
 import sys
 import json
 import argparse
+import os
 import pandas as pd
 import numpy as np
 import akshare as ak
 
-
-def get_stock_name(stock_code: str) -> str:
-    """获取股票名称"""
-    try:
-        info = ak.stock_individual_info_em(symbol=stock_code)
-        if isinstance(info, pd.DataFrame):
-            name_row = info[info[info['item'] == '股票简称']]
-            if len(name_row) > 0:
-                return name_row['value'].values[0]
-    except Exception:
-        pass
-    return stock_code
-
-
-def get_stock_info(stock_code: str) -> dict:
-    """获取股票基本信息"""
-    try:
-        info_df = ak.stock_individual_info_em(symbol=stock_code)
-        info = {}
-        if isinstance(info_df, pd.DataFrame):
-            for _, row in info_df.iterrows():
-                info[row['item']] = row['value']
-        return info
-    except Exception as e:
-        print(f"获取股票信息失败: {e}")
-        return {}
+# 导入共享数据模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from data_fetcher import get_stock_name, get_stock_info, get_stock_price
 
 
 def get_balance_sheet(stock_code: str, period: str = "annual"):
@@ -186,22 +168,23 @@ def main():
     print(f"  {stock_name} ({stock_code}) · 财务数据获取")
     print(f"{'='*60}\n")
 
-    # 获取财务数据
+    # 获取财务数据（akshare）
     balance_df = clean_financial_data(get_balance_sheet(stock_code, args.period))
     income_df = clean_financial_data(get_income_statement(stock_code, args.period))
     cashflow_df = clean_financial_data(get_cash_flow(stock_code, args.period))
+
+    # 获取基本信息（Hermes JSON）
     stock_info = get_stock_info(stock_code)
+    latest_price = get_stock_price(stock_code)
 
     print(f"  资产负债表: {len(balance_df)} 条")
     print(f"  利润表:     {len(income_df)} 条")
     print(f"  现金流量表: {len(cashflow_df)} 条")
+    if latest_price > 0:
+        print(f"  最新股价:   {latest_price:.2f}")
 
     # 提取关键指标
     key_data = extract_key_financials(balance_df, income_df, cashflow_df)
-
-    # 获取最新股价
-    price_df = get_historical_prices(stock_code, years=1)
-    latest_price = float(price_df.iloc[-1]['收盘']) if len(price_df) > 0 else 0.0
 
     # 保存Excel
     if args.save_excel:

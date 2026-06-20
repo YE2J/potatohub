@@ -64,11 +64,13 @@ pip --version
 
 1. **Do NOT try `python3.X -m venv --without-pip venv` then `curl | python` to install pip.** The underlying CPython in Homebrew is broken at the binary level (pyexpat symbols), not just missing pip. `uv` downloads an entirely separate working CPython.
 
-2. **Do NOT use `python3.11` if `python3.12` is available.** On macOS 26.2 both are broken, but 3.12 with `uv` is the tested working path.
+2. **macOS system Python 3.9.6 is a viable fallback** when `uv` is not installed. `/usr/bin/python3` ships with macOS and is guaranteed compatible. Limitation: only Python 3.9, some modern packages may need >=3.10.
 
-3. **`uv`'s `--python` flag downloads a CPython build.** First run may take 10–30 seconds for the download. Subsequent runs are cached.
+3. **Do NOT use Homebrew Python 3.11.15_3 on macOS 26.2.** Confirmed broken: `python3.11 -c "import xml.parsers.expat"` fails with `Symbol not found: _XML_SetAllocTrackerActivationThreshold`. The system `/usr/lib/libexpat.1.dylib` lacks this symbol.
 
-4. **PEP 668 compliance.** `uv` creates isolated venvs by default — no `--break-system-packages` needed.
+4. **`uv`'s `--python` flag downloads a CPython build.** First run may take 10–30 seconds for the download. Subsequent runs are cached.
+
+5. **PEP 668 compliance.** `uv` creates isolated venvs by default — no `--break-system-packages` needed.
 
 ## References
 

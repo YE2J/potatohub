@@ -15,8 +15,14 @@
 import sys
 import json
 import argparse
-import pandas as pd
-import akshare as ak
+import os
+
+# 导入共享数据模块
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from data_fetcher import (
+    get_stock_name, get_stock_price, get_stock_industry_name,
+    get_stock_concepts, SW_LEVEL2_TO_LEVEL1, DATA_DIR
+)
 
 
 # ============================================================
@@ -297,29 +303,27 @@ def get_stock_industry(stock_code: str) -> dict:
     }
 
     try:
-        # 尝试获取申万行业分类
         print(f"正在获取 {stock_code} 的行业分类...")
-        try:
-            industry_df = ak.stock_board_industry_name_em()
-            # 获取个股所属行业
-            stock_industry = ak.stock_individual_info_em(symbol=stock_code)
-            industry_name = None
-            if isinstance(stock_industry, pd.DataFrame):
-                industry_row = stock_industry[stock_industry['item'] == '行业']
-                if len(industry_row) > 0:
-                    industry_name = industry_row['value'].values[0]
-            result["industry"] = industry_name or "未知"
-        except Exception:
-            pass
 
-        # 匹配行业分类
-        for industry_key, model_config in INDUSTRY_MODEL_MAP.items():
-            if result["industry"] and industry_key in result["industry"]:
-                result["matched_category"] = industry_key
-                result["model_config"] = model_config
-                break
+        # 从 Hermes JSON 获取申万二级行业（如"白酒Ⅱ"）
+        sw_level2 = get_stock_industry_name(stock_code)
+        result["industry"] = sw_level2
 
-        # 如果未匹配，使用通用配置
+        # 申万二级 → 一级行业映射
+        level1 = SW_LEVEL2_TO_LEVEL1.get(sw_level2, None)
+
+        if level1 and level1 in INDUSTRY_MODEL_MAP:
+            result["matched_category"] = level1
+            result["model_config"] = INDUSTRY_MODEL_MAP[level1]
+        else:
+            # 如果二级行业没匹配上，尝试模糊匹配
+            for industry_key, model_config in INDUSTRY_MODEL_MAP.items():
+                if industry_key in sw_level2 or sw_level2 in industry_key:
+                    result["matched_category"] = industry_key
+                    result["model_config"] = model_config
+                    break
+
+        # 如果仍未匹配，使用通用配置
         if result["matched_category"] is None:
             result["matched_category"] = "通用（制造业）"
             result["model_config"] = INDUSTRY_MODEL_MAP["机械设备"]
@@ -337,30 +341,6 @@ def get_stock_industry(stock_code: str) -> dict:
         result["matched_category"] = "通用（制造业）"
         result["model_config"] = INDUSTRY_MODEL_MAP["机械设备"]
         return result
-
-
-def get_stock_name(stock_code: str) -> str:
-    """获取股票名称"""
-    try:
-        info = ak.stock_individual_info_em(symbol=stock_code)
-        if isinstance(info, pd.DataFrame):
-            name_row = info[info['item'] == '股票简称']
-            if len(name_row) > 0:
-                return name_row['value'].values[0]
-    except Exception:
-        pass
-    return stock_code
-
-
-def get_stock_price(stock_code: str) -> float:
-    """获取最新股价"""
-    try:
-        df = ak.stock_zh_a_hist(symbol=stock_code, period='daily', adjust='qfq')
-        if len(df) > 0:
-            return float(df.iloc[-1]['收盘'])
-    except Exception:
-        pass
-    return 0.0
 
 
 def main():
