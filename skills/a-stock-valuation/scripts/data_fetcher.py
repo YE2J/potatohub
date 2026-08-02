@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 数据获取共享模块
-优先从 Hermes web_extract 生成的 JSON 文件读取，降级到 akshare
+优先从 Hermes web_extract 生成的 JSON 文件读取，降级到 Tushare
 
 Hermes 获取数据后存到: ~/.hermes/skills/a-stock-valuation/data/{code}_{type}.json
 本模块统一读取这些文件，三个脚本不需要各自处理数据源。
@@ -18,11 +18,29 @@ import json
 import os
 import time
 import urllib.request
+from datetime import datetime
 import pandas as pd
-import akshare as ak
+import tushare as ts
 
 # 数据文件目录
 DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+
+
+# ============================================================
+# Tushare 初始化
+# ============================================================
+
+_TS_PRO = None
+
+
+def _get_ts_pro():
+    global _TS_PRO
+    if _TS_PRO is None:
+        try:
+            _TS_PRO = ts.pro_api()
+        except Exception:
+            _TS_PRO = None
+    return _TS_PRO
 
 
 # ============================================================
@@ -94,8 +112,8 @@ _TENCENT_CACHE_TTL = 60    # 缓存60秒
 
 def _fetch_tencent_quote(stock_code: str) -> dict:
     """腾讯行情 API — 稳定、无反爬、无频率限制
-    
-    返回 dict: name, price, pe_ttm, pb, total_mv, float_mv, 
+
+    返回 dict: name, price, pe_ttm, pb, total_mv, float_mv,
                turnover_rate, change_pct, volume, shares, ...
     """
     # 进程级短缓存
@@ -107,7 +125,7 @@ def _fetch_tencent_quote(stock_code: str) -> dict:
 
     market = 'sh' if stock_code.startswith(('6', '9')) else 'sz'
     url = f"https://qt.gtimg.cn/q={market}{stock_code}"
-    
+
     try:
         resp = urllib.request.urlopen(url, timeout=8)
         text = resp.read().decode('gbk')
@@ -116,13 +134,13 @@ def _fetch_tencent_quote(stock_code: str) -> dict:
         if s < 0 or e <= s:
             return {}
         fields = text[s+1:e].split('~')
-        
+
         if len(fields) < 47:
             return {}
-        
+
         price = float(fields[3]) if fields[3] else 0
         total_mv = float(fields[45]) if fields[45] else 0  # 总市值(亿)
-        
+
         result = {
             'name': fields[1],
             'code': fields[2],
@@ -141,6 +159,119 @@ def _fetch_tencent_quote(stock_code: str) -> dict:
         return result
     except Exception:
         return {}
+
+
+# ============================================================
+# Tushare 降级辅助函数
+# ============================================================
+
+def _ts_stock_code(code: str) -> str:
+    """将6位股票代码转为 Tushare 格式（如 600519 → 600519.SH）"""
+    if code.endswith(('.SH', '.SZ', '.BJ')):
+        return code
+    suffix = 'SH' if code.startswith(('6', '9')) else 'SZ'
+    return f"{code}.{suffix}"
+
+
+def _fetch_ts_daily(code: str) -> pd.DataFrame:
+    """Tushare 历史日线兜底"""
+    pro = _get_ts_pro()
+    if pro is None:
+        return pd.DataFrame()
+    try:
+        ts_code = _ts_stock_code(code)
+        df = pro.daily(ts_code=ts_code, start_date='20000101', end_date='20500101')
+        time.sleep(1.1)  # 限频退避，防止429
+        if df is not None and len(df) > 0:
+            df = df.sort_values('trade_date')
+            return df
+    except Exception:
+        pass
+    return pd.DataFrame()
+
+
+def _fetch_ts_stock_basic(code: str) -> dict:
+    """Tushare 股票基本信息兜底（含行业）"""
+    pro = _get_ts_pro()
+    if pro is None:
+        return {}
+    try:
+        ts_code = _ts_stock_code(code)
+        df = pro.stock_basic(ts_code=ts_code, fields='ts_code,name,industry,area,list_date,market')
+        time.sleep(1.1)  # 限频退避，防止429
+        if df is not None and len(df) > 0:
+            row = df.iloc[0]
+            result = {'name': row.get('name', ''), 'industry': row.get('industry', '')}
+            return result
+    except Exception:
+        pass
+    return {}
+
+
+def _fetch_ts_financial_abstract(code: str) -> dict:
+    """Tushare 财务指标兜底（取最近一期年报数据）
+    返回: {'revenue': 元, 'net_profit': 元, 'roe': 小数, 'debt_ratio': 小数, ...}
+    """
+    pro = _get_ts_pro()
+    if pro is None:
+        return {}
+    result = {}
+    try:
+        ts_code = _ts_stock_code(code)
+
+        # 1. 财务指标 (ROE/毛利率/净利率)
+        df_fi = pro.fina_indicator(ts_code=ts_code, fields='ts_code,end_date,roe,roa,gross_margin,netprofit_margin,eps,bps,ocfps',
+                                    start_date='20100101', end_date=datetime.now().strftime('%Y1231'))
+        time.sleep(1.1)  # 限频退避，防止429
+        if df_fi is not None and len(df_fi) > 0:
+            # 取最新年报（end_date 以 1231 结尾）
+            annual = df_fi[df_fi['end_date'].astype(str).str.endswith('1231')]
+            if len(annual) > 0:
+                latest = annual.sort_values('end_date').iloc[-1]
+            else:
+                latest = df_fi.sort_values('end_date').iloc[-1]
+
+            roe_val = float(latest.get('roe', 0) or 0) / 100.0  # Tushare ROE 是百分比值（15.2 → 0.152）
+            result['roe'] = roe_val
+            if 'eps' in latest:
+                result['eps'] = float(latest['eps'] or 0)
+            if 'bps' in latest:
+                result['bps'] = float(latest['bps'] or 0)
+            if 'ocfps' in latest:
+                result['ocfps'] = float(latest['ocfps'] or 0)
+
+        # 2. 利润表 (营收/净利润)
+        df_inc = pro.income(ts_code=ts_code, fields='ts_code,end_date,revenue,n_income_attr_p,operate_profit',
+                             start_date='20100101', end_date=datetime.now().strftime('%Y1231'))
+        time.sleep(1.1)  # 限频退避，防止429
+        if df_inc is not None and len(df_inc) > 0:
+            annual_inc = df_inc[df_inc['end_date'].astype(str).str.endswith('1231')]
+            if len(annual_inc) > 0:
+                latest_inc = annual_inc.sort_values('end_date').iloc[-1]
+            else:
+                latest_inc = df_inc.sort_values('end_date').iloc[-1]
+            result['revenue'] = float(latest_inc.get('revenue', 0) or 0)
+            result['net_profit'] = float(latest_inc.get('n_income_attr_p', 0) or 0)
+            result['operating_profit'] = float(latest_inc.get('operate_profit', 0) or 0)
+
+        # 3. 资产负债表 (总资产/负债)
+        df_bs = pro.balancesheet(ts_code=ts_code, fields='ts_code,end_date,total_assets,total_liab,total_hldr_eqy_exc_min_int',
+                                  start_date='20100101', end_date=datetime.now().strftime('%Y1231'))
+        time.sleep(1.1)  # 限频退避，防止429
+        if df_bs is not None and len(df_bs) > 0:
+            annual_bs = df_bs[df_bs['end_date'].astype(str).str.endswith('1231')]
+            if len(annual_bs) > 0:
+                latest_bs = annual_bs.sort_values('end_date').iloc[-1]
+            else:
+                latest_bs = df_bs.sort_values('end_date').iloc[-1]
+            result['total_assets'] = float(latest_bs.get('total_assets', 0) or 0)
+            result['total_liabilities'] = float(latest_bs.get('total_liab', 0) or 0)
+            result['total_equity'] = float(latest_bs.get('total_hldr_eqy_exc_min_int', 0) or 0)
+
+    except Exception:
+        pass
+
+    return result
 
 
 # ============================================================
@@ -166,6 +297,10 @@ def get_stock_name(stock_code: str) -> str:
     bs = _read_financial_json(stock_code, 'balance_sheet')
     if bs.get('name'):
         return bs['name']
+    # 5. Tushare 兜底
+    ts_info = _fetch_ts_stock_basic(stock_code)
+    if ts_info.get('name'):
+        return ts_info['name']
     return stock_code
 
 
@@ -190,13 +325,10 @@ def get_stock_price(stock_code: str) -> float:
     if kdata.get('klines'):
         last = kdata['klines'][-1]
         return float(last.split(',')[2])
-    # 5. akshare 历史数据降级
-    try:
-        df = ak.stock_zh_a_hist(symbol=stock_code, period='daily', adjust='qfq')
-        if len(df) > 0:
-            return float(df.iloc[-1]['收盘'])
-    except Exception:
-        pass
+    # 5. Tushare 历史数据降级
+    df = _fetch_ts_daily(stock_code)
+    if len(df) > 0:
+        return float(df.iloc[-1]['close'])
     return 0.0
 
 
@@ -212,16 +344,10 @@ def get_stock_industry_name(stock_code: str) -> str:
     level2 = data.get('f127', '')
     if level2 and level2 != '未知':
         return SW_LEVEL2_TO_LEVEL1.get(level2, level2)
-    # 3. akshare 实时降级
-    try:
-        info = ak.stock_individual_info_em(symbol=stock_code)
-        ind_row = info[info['item'] == '行业']
-        if not ind_row.empty:
-            industry = ind_row['value'].values[0]
-            if industry and industry != '--':
-                return industry
-    except Exception:
-        pass
+    # 3. Tushare stock_basic 降级
+    ts_info = _fetch_ts_stock_basic(stock_code)
+    if ts_info.get('industry'):
+        return ts_info['industry']
     return '未知'
 
 
@@ -332,7 +458,7 @@ def get_pb_ratio(stock_code: str) -> float:
 # ============================================================
 
 def get_financial_data_from_json(stock_code: str) -> dict:
-    """从 Hermes 生成的财务 JSON 读取三表关键数据，缺失时降级到 akshare"""
+    """从 Hermes 生成的财务 JSON 读取三表关键数据，缺失时降级到 Tushare"""
     result = {}
     bs = _read_financial_json(stock_code, 'balance_sheet')
     inc = _read_financial_json(stock_code, 'income')
@@ -349,39 +475,23 @@ def get_financial_data_from_json(stock_code: str) -> dict:
     if cf:
         result['operating_cf'] = cf.get('operating_cf', 0) or 0
 
-    # 降级：JSON 缺失时从 akshare 拉取财务摘要
+    # 降级：JSON 缺失时从 Tushare 拉取财务摘要
     need_fallback = (not result.get('revenue') or not result.get('net_profit'))
     if need_fallback:
-        try:
-            df = ak.stock_financial_abstract_ths(symbol=stock_code, indicator='按报告期')
-            if df is not None and len(df) > 0:
-                # 取最新年报（报告期以 -12-31 结尾），降级到最新行
-                annual = df[df['报告期'].astype(str).str.endswith('-12-31')]
-                if len(annual) > 0:
-                    latest = annual.iloc[-1]
-                else:
-                    latest = df.iloc[-1]
-                # akshare 财务摘要字段：营业总收入、净利润（含"万/亿"后缀需解析）
-                result['revenue'] = result.get('revenue') or _parse_cn_amount(latest.get('营业总收入', 0))
-                result['net_profit'] = result.get('net_profit') or _parse_cn_amount(latest.get('净利润', 0))
-                # ROE 和负债率直接可用
-                roe_val = _parse_pct(latest.get('净资产收益率', ''))
-                debt_val = _parse_pct(latest.get('资产负债率', ''))
-                if roe_val and not result.get('roe'):
-                    result['roe'] = roe_val
-                if debt_val and not result.get('debt_ratio'):
-                    result['debt_ratio'] = debt_val
-                # 用 revenue 和 net_profit 估算 equity（EPS / ROE 反推）
-                if result.get('net_profit') and roe_val:
-                    result['total_equity'] = result['net_profit'] / roe_val
-                    result['total_assets'] = result['total_equity'] / (1 - debt_val) if debt_val and debt_val < 1 else 0
-                    result['total_liabilities'] = result['total_assets'] - result['total_equity'] if result['total_assets'] else 0
-        except Exception:
-            pass
+        ts_data = _fetch_ts_financial_abstract(stock_code)
+        if ts_data:
+            for key in ('revenue', 'net_profit', 'operating_profit', 'total_assets',
+                        'total_liabilities', 'total_equity', 'roe', 'eps', 'bps', 'ocfps'):
+                if key in ts_data and not result.get(key):
+                    result[key] = ts_data[key]
+            # Tushare 的 debt_ratio 需要从资产/负债计算
+            if result.get('total_assets') and result.get('total_liabilities'):
+                result['debt_ratio'] = result['total_liabilities'] / result['total_assets']
 
-    # 计算衍生指标
+    # 计算衍生指标（仅当 Tushare 未提供时）
     if result.get('total_equity', 0) > 0 and result.get('net_profit', 0) > 0:
-        result['roe'] = result['net_profit'] / result['total_equity']
+        if result.get('roe') is None or (isinstance(result.get('roe'), float) and (result['roe'] != result['roe'] or result['roe'] == 0)):
+            result['roe'] = result['net_profit'] / result['total_equity']
     if result.get('revenue', 0) > 0 and result.get('net_profit', 0) > 0:
         result['net_margin'] = result['net_profit'] / result['revenue']
     if result.get('total_assets', 0) > 0:
@@ -545,3 +655,24 @@ SW_LEVEL2_TO_LEVEL1 = {
     "造纸": "轻工制造", "包装印刷": "轻工制造",
     "家居用品": "轻工制造", "文娱用品": "轻工制造",
 }
+
+
+def batch_fetch_ts_financial(stock_codes: list) -> dict:
+    """批量获取多只股票的核心财务数据
+
+    Args:
+        stock_codes: 股票代码列表（6位数字，如 ['600519', '000858']）
+
+    Returns:
+        dict: {stock_code: {roe, eps, revenue, net_profit, total_assets, ...}}
+    """
+    result = {}
+    for code in stock_codes:
+        try:
+            data = _fetch_ts_financial_abstract(code)
+            if data:
+                result[code] = data
+            time.sleep(1.1)  # 每只股票之间限频退避
+        except Exception:
+            pass
+    return result

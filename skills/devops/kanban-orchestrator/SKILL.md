@@ -177,6 +177,10 @@ pattern (orchestrator + N workers on different models) and every pitfall encount
 
 **Forgetting dependency links.** If the task graph says `research -> implement -> review`, do not create all tasks as independent ready cards. Use parent links so implement/review cannot run before their inputs exist.
 
+**Parents deadlock on worker failure.** A child with `parents=[...]` auto-promotes from `todo` to `ready` only when **every** parent reaches `done`. If a parent worker fails (status=failed, not done), the child stays in `todo` permanently — the dispatcher never promotes it. Recovery: `kanban_reclaim <failed_task_id>` to retry, or `kanban_reassign <failed_task_id> <new-profile> --reclaim`. For critical paths, design a timeout watchdog: create a fallback card that monitors parent run time and handles the timeout.
+
+**CLI `--parent` (repeatable), not `--parents`.** The Python/tool API uses `parents=[id1, id2]` in `kanban_create`, but the CLI uses `--parent t_id1 --parent t_id2` — one `--parent` flag per parent, repeated. `--parents` is NOT a valid CLI argument and produces `unrecognized arguments`.
+
 **Reassignment vs. new task.** If a reviewer blocks with "needs changes," create a NEW task linked from the reviewer's task — don't re-run the same task with a stern look. The new task is assigned to the original implementer profile.
 
 **Argument order for links.** `kanban_link(parent_id=..., child_id=...)` — parent first. Mixing them up demotes the wrong task to `todo`.

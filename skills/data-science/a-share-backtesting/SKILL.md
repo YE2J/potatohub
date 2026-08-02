@@ -122,7 +122,116 @@ quant_backtest/
 
 ## Rule-Engine Strategy Design
 
-对于多指标融合策略，推荐用规则引擎替代简单的加权求和：
+对于多指标融合策略，推荐用规则引擎替代简单的加权求和。
+
+### 信号增强层 (Signal Enhancement Layer)
+
+当系统接入外部市场验证数据（涨停池/龙虎榜/热榜/连板天梯/个股异动）时，在原技术信号之上叠加一个**市场验证层**，形成双轴评分体系。
+
+实现见 `~/my_quant_system/financial_api/signal_enhancer.py`，核心逻辑：
+
+#### 买入：双轴综合评分（0-20分）
+
+```
+Base Score (max=10)          Market Verify (max=10)
+  GS信号          0|3          涨停封板强度      0|3
+  主力线上穿零轴    0|3          龙虎榜净买入>0    0|3
+  主力持仓>20%    0|2          市场热榜<=300     0|2
+  暗盘连2日流入    0|2          连板情绪>20%      0|2
+                              ─────────────────
+总分≥10 → 买入信号    总分≥15 → 满仓信号
+```
+
+#### 卖出：三级检查表
+
+| 优先级 | 条件（任一即触发） | 动作 |
+|:------:|------------------|------|
+| **A强制** | -8%止损 / 主力3连降 / 连板断板 / 龙虎榜净卖>买入50% | 立即清仓 |
+| **B建议** | 峰值回调>5% / 热榜3日降 / 打压异动 / 主力线动能减弱 | 累计2项即卖 |
+| **C减半** | GS转空 / 暗盘转流出 / 游资对倒 / 飙升榜排名下降 | 减半仓 |
+
+#### 动态仓位：连板情绪指数
+
+从 `limit_up_ladder` 表计算：`连板情绪 = 2板以上股票数 / 总涨停数`
+
+```
+连板情绪 > 30% → 满仓3只
+连板情绪 10-30% → 2只
+连板情绪 < 10% → 最多1只
+```
+
+#### 设计原则
+
+- **可插拔**：`financial_api/signal_enhancer.py` 独立模块，不侵入原 `backtest_v4.py`
+- **静默降级**：新表不存在或为空时返回默认值，不阻塞回测
+- **回测兼容**：回测期内从新表查询历史数据，与实盘共享同一逻辑
+
+### 双模式融合策略: KDJ超跌反弹 + GS趋势跟踪
+
+对于把反转信号（KDJ超卖）和趋势信号（GS+主力雷达）结合的策略，推荐**双模式框架**。两者建仓逻辑不同，不应强求同时满足。
+
+#### Mode A: 超跌反弹（反转逻辑）
+
+买入条件（ALL）：
+- KDJ_J < 0 且前一日也 < 0（J值超卖确认，过滤单日毛刺）
+- 距20日高点跌幅 > 10%（深度超跌）
+- 量能不低于5日均量的70%（非无量空跌）
+
+卖出条件（ANY）：
+- KDJ_J > 100（超买）或 RSI(14) > 80（超买确认）
+- 止损
+
+#### Mode B: 趋势延续（动量逻辑）
+
+买入条件（ALL）：
+- GS处于G信号或G区间（趋势向上）
+- 主力线上穿零轴（主力行为确认）
+- 暗盘资金连续2日流入
+- 非涨停日
+
+卖出条件（ANY）：
+- 主力线连续3日下降（主力出货）
+- 止损
+
+#### 综合评分排序
+
+```python
+if mode_a:
+    buy_rank = (-kdj_j) * 0.8 + drawdown_depth * 0.2  # 超卖程度优先
+else:
+    buy_rank = 10 + zhuli * 0.5  # 趋势强度优先（mode_b为基准值10）
+```
+
+#### 优化后默认参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| stop_loss_pct | 0.05 (5%) | 紧止损控制回撤 |
+| max_positions | 3 | 最多同时持3只 |
+| position_frac | 0.25 (25%) | 每只25%仓位 |
+| 买入冷静期 | 5天 | 卖出后5天不买回 |
+
+99只自选股（2025-01 ~ 2026-07）回测结果：
+- 总收益：+154.4%（vs 买入持有+68.4%）
+- 最大回撤：3.6%
+- 胜率：66.7%
+- 收益/回撤比：42.9
+
+完整实现见 ~/my_quant_system/backtest_v5_fusion.py
+
+#### 参数优化（网格搜索）
+
+```python
+# 核心可调参数
+param_grid = {
+    "stop_loss_pct": [0.05, 0.08, 0.10],
+    "position_frac": [0.20, 0.25, 0.33, 0.50],
+}
+# 评分函数（最大化收益/回撤比）
+score = ret_pct * 0.4 + (ret_pct / max(dd, 1)) * 30 + win_rate * 0.2
+if trades < 5: score -= 30
+if dd > 15: score -= 40
+```
 
 ### 5层决策体系
 
@@ -393,6 +502,153 @@ Do NOT run `ValuationAssessor.evaluate()` or `ValuationChannelGenerator.generate
     sys.modules[module_name] = module  # ← REQUIRED
     spec.loader.exec_module(module)
     ```
+
+## Common Backtesting Bug Patterns
+
+### Pitfall 14: Look-Ahead Bias (未来函数) in Multi-Stock Backtesting
+
+When checking sell signals during the main loop, code that uses `.iloc[-1]`, `.iloc[-2]`, or `zhuli_series[-1]` (the last elements of the entire DataFrame) is reading **future data** — the DataFrame contains ALL dates, and the last rows are the most recent trading days, not today.
+
+**Pattern to fix** — anchor to the current date:
+
+```python
+# ❌ BEFORE (look-ahead bias):
+zhuli_series = df.get("radar_zhuli", pd.Series()).values
+zhuli_today = float(zhuli_series[-1])            # future!
+zhuli_last_3 = [zhuli_series[-2], ...]            # future!
+
+# ✅ AFTER (date-anchored):
+df_stock = stock_data[code]
+current_dates_ts = pd.to_datetime(df_stock['date'])
+current_row_idx = int((current_dates_ts <= pd.to_datetime(today_str)).sum()) - 1
+current_row_idx = max(current_row_idx, 0)
+
+zhuli_series = df_stock.get("radar_zhuli", pd.Series()).values
+zhuli_today = float(zhuli_series[current_row_idx])
+zhuli_last_3 = []
+for offset in range(3):
+    idx = current_row_idx - offset
+    zhuli_last_3.append(float(zhuli_series[idx]) if 0 <= idx < len(zhuli_series) else 0.0)
+zhuli_last_3.reverse()  # chronological order
+
+# Yesterday's price: use current_row_idx - 1, not -2
+prev_close = df_stock.iloc[current_row_idx - 1].get("close", 0)
+```
+
+### Pitfall 15: Date Format Mismatch in DataFrame Merge
+
+When merging factors from SQLite (`daily_factors.trade_date` is `YYYY-MM-DD`) with K-line data from Parquet/DB (often `YYYYMMDD`), the merge silently matches 0 rows.
+
+**Fix** — normalize both to the same format before merging:
+
+```python
+f_df['date'] = f_df['trade_date'].str.replace('-', '')        # YYYY-MM-DD → YYYYMMDD
+df['date'] = df['date'].astype(str).str.replace('-', '')       # normalize just in case
+df = df.merge(f_df[['date', 'factor_col_a']], on='date', how='left')
+```
+
+Do `pd.to_datetime()` conversion AFTER the merge if needed downstream.
+
+### Pitfall 16: SQLite Connection Leak in Long-Running Loops
+
+A `sqlite3.Connection` opened before a long loop and closed after it leaks if any exception occurs mid-loop.
+
+**Fix** — wrap the entire body in `try/finally`:
+
+```python
+enh_conn = None
+try:
+    if use_enhanced:
+        enh_conn = sqlite3.connect(db_path)
+    for date in all_dates:
+        ...
+finally:
+    if enh_conn is not None:
+        try:
+            enh_conn.close()
+        except Exception:
+            pass
+```
+
+### Pitfall 17: RSI `loss.replace(0, np.nan)` → NaN on Consecutive Up Days
+
+When all `n` days in the RSI window are positive, `loss` is 0, and `.replace(0, np.nan)` makes `rs = gain / np.nan = NaN`, producing `RSI = 100 - (100 / (1 + NaN)) = NaN`. The correct RSI for all-up periods is 100.
+
+**Fix** — use `np.where` to handle zero loss before division:
+
+```python
+def _rsi(series, period=14):
+    delta = series.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    # loss=0时(全涨行情)RSI应为100, 而非NaN
+    safe_rs = np.where(loss == 0, np.inf, gain / loss)
+    rs_series = pd.Series(safe_rs, index=loss.index)
+    return 100 - (100 / (1 + rs_series))
+```
+
+### Pitfall 18: `get_price` Date Type Mismatch → Silent Zero Valuation
+
+In multi-stock backtesting, the equity curve loop uses `get_price(code, date, "close")`. If stock_data's `date` column is `str` (e.g., `"2025-04-09"`) but `date` from `all_dates` is a `pd.Timestamp`, the comparison `sdf["date"] == dt` silently fails (0 matches) and `get_price` returns `None`. This causes all open positions to be valued at 0 in the equity curve, producing **false 99%+ drawdown**.
+
+**Fix** — normalize both sides to the same type:
+
+```python
+def get_price_at(code, target_date, price_type="open"):
+    sdf = stock_data.get(code)
+    if sdf is None or len(sdf) == 0:
+        return None
+    # Convert column to datetime for comparison
+    col_date = pd.to_datetime(sdf["date"], format='mixed')
+    td = pd.to_datetime(target_date)
+    mask = col_date == td
+    if mask.any() and price_type in sdf.columns:
+        val = float(sdf.loc[mask.values, price_type].iloc[0])
+        return val if not np.isnan(val) and val > 0 else None
+    return None
+```
+
+### Pitfall 19: Stop-Loss Executed at Close Price (Unrealistic Fill)
+
+Using the day's close price to both detect AND fill a stop-loss is unrealistic. In practice, a stop-loss triggers intraday when the price crosses the threshold, and fills at the next available price.
+
+**Fix** — two-layer approach for more realistic fills:
+
+```python
+# Layer 1: Check with close price (end-of-day check)
+if (close_price - entry_price) / entry_price < -stop_loss_pct:
+    # Layer 2: Use next day's open for actual fill (realistic)
+    # Implementation: set a flag, process at open of next trading day
+    pending_stops.append(code)
+
+# OR layer 1: Check with low price (intraday check, more aggressive)
+if (low_price - entry_price) / entry_price < -stop_loss_pct:
+    sell_list.append((code, close_price, "止损(盘中触发)"))
+```
+
+### Pitfall 20: No Suspension / Limit-Down Detection
+
+Trades placed on suspended stocks (volume=0) or days where the stock hits the down limit (-9.5%+) will never fill in reality. Without detection, these phantom trades inflate returns.
+
+**Fix** — check before any trade:
+
+```python
+suspended = (df["volume"] < 1) | (df["pct_change"] <= -9.5) | (df["pct_change"] >= 9.5)
+# Buy: skip if limit-up (can't buy)
+# Sell: skip if limit-down (can't sell)
+```
+
+### Pitfall 21: `position_capital` Fixed at Initial Value
+
+If `position_capital = initial_capital * position_frac` is computed once at startup, it never shrinks when the portfolio takes losses (or grows when profitable). A 333K allocation on a 50K cash balance causes the backtest to massively over-size trades relative to real capital.
+
+**Fix** — make allocation dynamic:
+
+```python
+# Daily allocation (adjusts with P&L)
+per_stock = cash * position_frac if cash < initial_capital * 0.8 else initial_capital * position_frac
+available = min(per_stock, cash)
+```
 
 ## User Workflow Preferences (A-share investor)
 

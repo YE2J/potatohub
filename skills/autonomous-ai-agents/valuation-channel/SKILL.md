@@ -208,7 +208,37 @@ df = scanner.scan(['000001', '600519', '002415'])
 
 涉及文件: `scripts/valuation_channel.py` 中的 `get_kline()` 方法。
 
-### 2. matplotlib 在 async Web 服务中挂起
+### 2. BatchScanner 代码不可带 .SZ/.SH 后缀
+`BatchScanner.scan()` 接收裸代码（如 `301338`），如果传入带后缀的代码（如 `301338.SZ`），会触发 `'list' object has no attribute 'get'` 错误。
+
+**正确用法：**
+```python
+scanner.scan(['301338', '000988'])   # ✅ 裸代码
+scanner.scan(['301338.SZ', '000988.SZ'])  # ❌ 带后缀报错
+```
+
+CLI 也一样：
+```bash
+python valuation_channel.py --batch 301338,000988,301526,000999  # ✅
+```
+
+### 3. 从 venv_stock (py3.9) 运行需要 PYTHONPATH 隔离
+当从 Hermes cron 或终端调用 `scripts/valuation_channel.py` 时，若使用 `venv_stock` 的 Python 3.9，Hermes agent 的 py3.11 site-packages 会污染 `sys.path`，导致 numpy 导入失败：
+
+```
+ModuleNotFoundError: No module named 'numpy._core._multiarray_umath'
+```
+
+**修复**：用 `PYTHONPATH` 强制指向 `venv_stock` 的 site-packages：
+```bash
+cd ~/.hermes/skills/autonomous-ai-agents/valuation-channel/scripts
+PYTHONPATH="/Users/yellow/.hermes/venv_stock/lib/python3.9/site-packages" \
+  ~/.hermes/venv_stock/bin/python valuation_channel.py --batch 301338,000988,301526,000999 --top 4
+```
+
+详情见 `references/venv-stock-pythonpath-isolation.md`。
+
+### 4. matplotlib 在 async Web 服务中挂起
 在 FastAPI/uvicorn 等 async web 进程中直接导入 `valuation_channel` 并调用 `generate()` / `evaluate()` 会导致 matplotlib 静默挂起（无异常、无输出、整个进程卡死）。
 
 **原因**：matplotlib 的 `use('Agg')` backend 与 uvicorn 的事件循环存在交互冲突，具体表现为：
@@ -228,13 +258,13 @@ result = subprocess.run(
 
 参考 `references/subprocess-isolation.md` 获取完整实现。
 
-### 3. 腾讯API K线数据含分红字典字段
+### 5. 腾讯API K线数据含分红字典字段
 `get_kline()` 返回的某些行在第 6 个字段后包含一个字典（分红除权信息）。处理方式：
 ```python
 all_rows = [r[:6] for r in all_rows]  # 只取前6个字段，丢弃分红信息
 ```
 
-### 4. 腾讯API市场前缀规则
+### 6. 腾讯API市场前缀规则
 A股代码的市场前缀规则不止 `6→sh/其余→sz`：
 
 | 股票代码开头 | 市场前缀 | 示例 |
@@ -250,7 +280,29 @@ A股代码的市场前缀规则不止 `6→sh/其余→sz`：
 market_prefix = "sh" if stock_code.startswith(("6", "5", "8", "9")) else "sz"
 ```
 
-### 5. ValuationAssessor.evaluate() 极慢
+### 7. ValuationAssessor.evaluate() 极慢
 `ValuationAssessor.evaluate()` 因内部多次调用 akshare + matplotlib 多模型计算，**单只股票耗时 ~460 秒**。不适合批量或在线场景。
 
 **快速替代方案**：直接从本地 SQLite 数据库读取已缓存的日线数据，只做 PE 通道计算 + 画图，单只耗时 ~1 秒。参考 `references/simplified-valuation.md` 获取实现。
+
+### 8. Parquet 增量更新必须合并而非覆盖
+在用 `DataFetcher` 或 `data_manager` 做日线数据增量更新时，**不能直接用新 DataFrame 覆盖 Parquet 文件**，否则历史数据会丢失。
+
+**错误做法**（全量丢失）：
+```python
+df_new = fetch_from_tencent(code, start, end)  # 只有1-2条
+df_new.to_parquet(f'{code}.parquet')            # 旧数据没了！
+```
+
+**正确做法**（合并后写入）：
+```python
+df_new = fetch_from_tencent(code, start, end)
+df_old = pd.read_parquet(f'{code}.parquet') if os.path.exists(f'{code}.parquet') else pd.DataFrame()
+if not df_old.empty:
+    df_full = pd.concat([df_old, df_new]).drop_duplicates(subset='date').sort_values('date')
+else:
+    df_full = df_new
+df_full.to_parquet(f'{code}.parquet', index=False)
+```
+
+`_save_to_parquet()` 方法签名是直接覆盖写入，所以在增量更新场景中调用前必须自行完成合并逻辑。

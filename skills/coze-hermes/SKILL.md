@@ -10,7 +10,9 @@ dependency: {}
 
 用 Coze（线上大脑）做调度/分析/通知，用 Hermes（本机）做执行/数据库/脚本运行。两者通过 Coze 桌面端 Electron 桥接本地 bash 执行来通信。
 
-> **2026-06-20 重新评估**：三 Agent 并行评审后，Coze 从「对等协作者」降级为「数据补充源 + 兜底守护」。恒生聚源 5 类独有数据保留，独立日报和频繁心跳砍掉。详阅 `references/architecture-reevaluation-20260620.md`。**最终数据源综合推荐（保留/砍掉/成本/L2决策）见** `references/final-data-source-recommendation-20260620.md`。
+> **2026-06-20 重新评估**：三 Agent 并行评审后，Coze 从「对等协作者」降级为「数据补充源 + 兜底守护」。恒生聚源 5 类独有数据保留，独立日报和频繁心跳砍掉。详阅 `references/architecture-reevaluation-20260620.md`。**最终数据源综合推荐见** `references/final-data-source-recommendation-20260620.md`。
+>
+> **2026-06-26 路径统一 & 调度重构**：共享目录从 `~/.hermes/health_shared/` 迁移到 `~/quant_shared/`（symlink → `~/quant_shared_real/`）。cron 调度从 Hermes cron 迁移到系统 crontab。详见下方更新章节。
 
 ## Coze 桌面端 — 关键事实
 
@@ -63,19 +65,43 @@ Coze 的 bash 执行**可能是沙箱化的**——脚本 stdout 会显示在 Co
 
 ## Coze ↔ Hermes 分工模式
 
+> **2026-06-25 重新确认**：经过三方 Agent 并行评审，数据管线最终方案：**Coze 统一提供所有行情数据（不复权 + 前复权），Hermes 纯消费。** 详阅 `references/data-pipeline-division-20260625.md`。
+
 ```
-Coze（云端大脑）:
-  ├─ 恒生聚源机构数据（Coze 独占）
+Coze（云端数据源 + 调度）:
+  ├─ 恒生聚源 MCP → 不复权原始行情（dz_dailyquote）
+  ├─ 腾讯 fqkline API → 前复权日K线（daily_kline）
   ├─ Calendar 定时调度
   ├─ 按需触发：用户说"估值 600519"→ 执行本地 bash
   └─ 汇总分析 + 异常提醒
 
-Hermes（本地执行引擎）:
-  ├─ batch_valuation.py — 读 SQLite → 逐只估值 → 写结果
-  ├─ 单只/多只即席估值
+Hermes（本地消费引擎）:
+  ├─ 数据导入：Coze 推送 CSV → 本地 SQLite
+  ├─ 策略运行 / 回测 / 日报生成
+  ├─ 告警推送（deliver:origin → 微信）
   ├─ SQLite 数据存储（~/my_quant_system/stock_data.db）
   └─ 估值脚本：industry_mapper.py, get_financials.py, calculate_valuation.py
 ```
+
+### 数据管线决定（2026-06-25）
+
+| 决定 | 说明 |
+|------|------|
+| **不复权行情** | Coze 恒生聚源 → `dz_dailyquote` 表 |
+| **前复权行情** | Coze 腾讯 fqkline → `daily_kline` 表（直接返回前复权，无需本地计算） |
+| **Tushare adj_factor** | ❌ 放弃。积分=0 无法调用，且腾讯直接给前复权无需此环节 |
+| **Hermes 角色** | 纯消费者，不负责任何数据拉取或复权计算 |
+
+### QFQ 增量导入管线（2026-06-27 新建）
+
+Coze 日历任务每日凌晨拉取全量前复权 → 上传项目空间 `/data/qfq/` → Hermes cron 05:30 自动下载导入。
+
+数据文件：`/data/qfq/qfq_incremental_{YYYYMMDD}.csv.gz`
+信号文件：`/data/qfq/signal_{YYYYMMDD}.json`（格式: `{"status":"ok|partial|failed","trade_date":"...","row_count":N}`）
+
+Hermes 侧：`~/.hermes/scripts/qfq_import.sh`（no_agent, deliver=local, 周一到周五 05:30），从 Coze 项目空间下载信号+数据文件，解析 JSON status，INSERT OR REPLACE 导入 daily_kline 表，验证行数后写入日志 `~/.logs/qfq_import.log`。
+
+完整架构详见 `references/qfq-auto-import.md`。
 
 ## SQLite 数据库
 
@@ -83,13 +109,57 @@ Hermes（本地执行引擎）:
 
 关键表：
 - `watchlist` — 自选股（stock_code, stock_name, group_id, group_name, added_at）
+- `daily_kline` — 前复权日K线（stock_code=InnerCode, date, OHLCV）
+- `moneyflow_daily` — 资金流向（大/中/小/超大单买卖额，来源: 东方财富 push2his）
 - `valuation_results` — 估值结果（stock_code, stock_name, run_date, pe_ttm, consensus_fair/low/high, rating, stars, report_text 等）
+
+> 💡 资金流向推荐改用问财 OpenAPI `hithink-market-query`，可获取完整的特大/大/中/小单**成交量（股）**+ 成交额（元），详见 iwencai-skillhub → `references/iwencai-moneyflow-fields.md`。
 
 估值脚本在：`~/.hermes/skills/a-stock-valuation/scripts/`
 
-### Coze ↔ Hermes 每日日报协作 (v2)
+### Coze ↔ Hermes 共享目录（2026-06-26 更新）
 
-### Hermes ↔ Coze 双向守护 (Mutual Watchdog) — v2
+**核心变更**：共享目录从 `~/.hermes/health_shared/` 迁移到 `~/quant_shared/`（symlink → `~/quant_shared_real/`）。
+
+#### 两层级共享目录
+
+| 层级 | 路径 | 用途 | 谁读写 |
+|:---:|:---|:---|:---:|
+| **日报层** | `~/quant_shared/daily_reports/` | 日报文件、信号文件 | Hermes+Coze 均可用 |
+| **同步层** | `~/quant_shared/daily_sync/` | Coze 任务同步文件 | Coze 上传，Hermes 下载 |
+| **心跳层** | `~/.hermes/health_shared/` | 心跳、自检、临时工单 | Hermes 写入，Coze 读取 |
+
+#### 日报目录结构
+```
+~/quant_shared/daily_reports/
+├── _ready_coze_YYYY-MM-DD           ← Coze 信号文件
+├── YYYY-MM-DD_coze.md               ← Coze 日报
+├── YYYY-MM-DD_hermes.md             ← Hermes 日报
+├── YYYY-MM-DD_hermes_feedback_coze.md ← Hermes 反馈
+├── YYYY-MM-DD_coze_feedback_hermes.md ← Coze 反馈
+└── archive/                         ← >90天归档
+```
+
+### Coze 同步方案（Scheme D）
+
+Coze 日历任务 00:15 触发 → 用 `write_file` 工具直接写同步文件到 `~/quant_shared/daily_sync/coze_sync_{YYYY-MM-DD}.md`。
+
+**不需要 Hermes 侧下载脚本**。`download_coze_sync.sh` 已废弃（标注 DEPRECATED，保留仅供参考），对应的系统 crontab 条目已删除。
+
+`hermes_daily_report.py` 已内置读取 coze_sync 文件的逻辑（Section 2 "Coze 日任务同步"），文件不存在时优雅降级。
+
+#### ⚠️ 路径一致性规则
+
+**所有脚本必须使用 `~/quant_shared/`（symlink 路径），不得硬编码 `~/quant_shared_real/`。**
+- `coze_daily_report.sh`, `hermes_daily_report.sh/.py`, `download_coze_sync.sh`, `daily_morning_report.sh` 全部统一使用 symlink 路径
+- 未来如果 real 目录变更，只需修改 symlink 一处，无需改所有脚本
+
+#### 路径更新检查
+
+修改 `COZE_SYNC_DIR` 等路径变量后，用以下命令确认无 real 残余：
+```bash
+grep -rn "quant_shared_real" ~/my_quant_system/scripts/ ~/.hermes/scripts/ --include="*.sh" --include="*.py" || echo "✅ 零残余"
+```
 
 当用户不在电脑旁时，通过 **launchd KeepAlive（系统级进程守护）+ Coze 10min 兜底检查 + 主人口令触发** 三层保障 Hermes 可用性。
 
@@ -102,21 +172,18 @@ Hermes（本地执行引擎）:
 **救命脚本覆盖的故障：** .env 丢失 / Python AMFI 拦截 / gateway 假死 / kickstart 失败
 
 详细勘查记录、v1→v2 演进和评审记录见 `references/mutual_watchdog.md`。
-
-### 概述
-Coze (00:00:00) 和 Hermes (00:00:10) 每天自动生成日报到共享目录 `~/quant_shared/daily_reports/`。Coze 写完报告后 touch 信号文件，Hermes 轮询信号文件后生成自己的报告。双方互读对方报告并写独立反馈文件。
+Session 历史工单报告生成模式（用户问「这几天做了什么」时的完整流程）见 `references/session-audit-report-pattern.md`。
 
 ### 共享目录结构
+
 ```
-~/quant_shared/daily_reports/
-├── _ready_coze_YYYY-MM-DD          ← Coze 信号文件
-├── YYYY-MM-DD_coze.md              ← Coze 日报
-├── YYYY-MM-DD_hermes.md            ← Hermes 日报
-├── YYYY-MM-DD_coze_feedback_hermes.md  ← Hermes 对 Coze 的反馈
-├── YYYY-MM-DD_hermes_feedback_coze.md  ← Coze 对 Hermes 的反馈
-├── feedback_log.md                 ← 反馈汇总表
-└── archive/                        ← >90天归档
-```
+| **心跳层** | `~/.hermes/health_shared/` | 心跳、自检、临时工单 |
+
+**同步方案（Scheme D）**：Coze 日历任务 00:15 直接用 `write_file` 写入同步文件到 `~/quant_shared/daily_sync/coze_sync_{date}.md`。Hermes 日报（01:30）自动读取。不需要 Hermes 侧下载脚本。
+
+### 旧共享目录清理
+
+`~/.hermes/health_shared/` 曾用于日报交换，2026-06-26 已迁移到 `~/quant_shared/`。当前仅保留心跳文件和归档目录，不再用于日报。
 
 ### 核心机制
 
@@ -130,20 +197,79 @@ Coze (00:00:00) 和 Hermes (00:00:10) 每天自动生成日报到共享目录 `~
 | 时间格式 | ISO 8601 (`YYYY-MM-DDTHH:MM:SS+08:00`) |
 
 ### Hermes 端脚本
-- `~/my_quant_system/scripts/hermes_daily_report.sh` — 信号轮询 + 清理
+- `~/my_quant_system/scripts/hermes_daily_report.sh` — v2.2，信号轮询 + 清理。支持 `REPORT_DATE` 环境变量指定日期。改用 `/usr/bin/python3`。（注意：output 目录必须为 ~/.hermes/health_shared/）
 - `~/my_quant_system/scripts/hermes_daily_report.py` — frontmatter 解析 + 日报生成 + 章节自检
 - `~/my_quant_system/scripts/hermes_append_feedback.py` — 写反馈 + SQLite feedback_log (v2.1)
-- `~/.hermes/scripts/hermes_daily_report.sh` — Cron wrapper
+- `~/.hermes/scripts/daily_morning_report.sh` — v3.0，每日 07:00 统一晨报。聚焦 A股日线+资金流+日报对齐+备份。`no_agent: true` + `deliver: origin`。
 
 ### Coze 端脚本（Hermes 宿主 Mac 上运行）
-- `~/my_quant_system/scripts/coze_daily_report.sh` — 调用 generate_daily_report.py + touch 信号文件
-- `~/my_quant_system/scripts/generate_daily_report.py` — Coze 工作报告生成器（v2.1 + SIGTERM handler）
+- `~/my_quant_system/scripts/coze_daily_report.sh` — v2.2，调用 generate_daily_report.py + touch 信号文件。改用 `/usr/bin/python3`，不再依赖 `.venv`。支持 `REPORT_DATE` 环境变量补跑历史日期。
+- `~/my_quant_system/scripts/generate_daily_report.py` — v2.2，Coze 工作报告生成器（含 SIGTERM handler）。修复日期参数：`sys.argv[1]` 支持指定日期补跑历史报告。
   - 常见 bug 模式见 `references/generate_daily_report_bugs.md`
 
-### Cron Job
-- Job ID: `00b779e99fdf`，调度 `10 0 * * *` (00:10 CST)，`no_agent: true`
+## 数据管线 crontab（2026-06-27 最终版）
 
-### feedback_log — SQLite (v2.1)
+```
+00:00  venv_guard.sh
+00:05  coze_daily_report.sh
+01:30  hermes_daily_report.sh
+04:00  daily_moneyflow_iwencai.sh backfill    ← 资金流向回补
+05:30  qfq_import.sh (Mon-Fri)                ← 前复权增量
+18:30  daily_moneyflow_iwencai.sh incremental ← 资金流向增量
+```
+
+### 资金流向数据源（2026-06-29 更新）
+
+- **主力**：同花顺 THS 全量数据（data_source='ths'），5,663 只，14M 行，2007~今
+- ~~问财 hithink-market-query（已停用，被 THS 数据替代）~~
+- ~~东方财富 push2his（保留32行历史，不做主数据源）~~
+- 存储：moneyflow_daily 表（四档买卖量+额，手+万元）
+- 每日增量待续购数据商确认后更新
+
+#### 系统 crontab（3 条，2026-06-30 最新）
+
+```cron
+0  0 * * *  venv_guard.sh              # 健康检查
+5  0 * * *  coze_daily_report.sh       # Coze 日报
+30 1 * * *  hermes_daily_report.sh     # Hermes 日报（读取 coze_sync）
+```
+
+> `coze_incremental_update.py` 和 `download_coze_sync.sh` 的 cron 已删除（2026-06-26）。数据导入由 qfq_import.sh（系统 crontab 05:30 Mon-Fri）和 daily_moneyflow_iwencai.sh（系统 crontab 18:30 Mon-Fri）负责。
+
+#### Hermes cron（仅保留 2 个，2026-06-30）
+| job | 调度 | deliver | 说明 |
+|:---|:---:|:---:|:---|
+| 每日晨报推送 | `0 7 * * *` | `origin` | **唯一允许推微信的 cron** |
+| Wiki 增量整理 | `30 3 * * *` | `local` | 数据整理，不推送 |
+
+#### 每日 07:00 统一晨报 v3.0
+
+**设计目标**: 将所有 cron 结果整合为**一条消息**推微信，避免 iLink 限流。聚焦实质数据，去掉旧内容和冗余。
+
+**数据源**（v3.0）:
+- A股全量日线日志 `~/.logs/qfq_import.log`（05:30 Mon-Fri 产出）
+- 资金流日志 `~/.logs/moneyflow_cron.log`（18:30 Mon-Fri 产出）
+- Coze/Hermes 日报 `~/quant_shared/daily_reports/`
+- Coze 同步文件 `~/quant_shared/daily_sync/coze_sync_{date}.md`
+
+**内容结构**:
+1. 📊 A股全量日线 — 导入状态、只数、成功/失败
+2. 💰 资金流 — hits/inserted、Key 状态
+3. 🤖 日报对齐 — 两报是否存在、信号是否对齐、没干成的事
+4. 🔄 Coze 任务同步 — 前 8 行摘要
+5. 备份到 `~/quant_shared/daily_reports/archive/morning/`（30天自动清理）
+
+**实现**: `~/.hermes/scripts/daily_morning_report.sh` v3.0 — `no_agent: true` + `deliver: origin`
+
+#### 推送限流规则（核心约束）
+- **新增 cron 默认 `deliver: local`**（只存不推送）
+- **仅每日晨报**（`daily_morning_report.sh`, 07:00）可 `deliver: origin` 推微信
+- 新接入通讯平台同样先评估该平台的推送频率限制
+- 违反此规则的 cron 会在微信端触发 iLink 30s cooldown 限流
+- venv 健康检查、DB 备份状态、CSRC 案例、热门板块、估值日报 (定时任务已不存在)
+- "最近工作摘要"、"待主人决策" 等伪更新章节
+
+### 共享目录结构
 
 ```sql
 -- 在 stock_data.db 中，WAL 模式，并发安全
@@ -235,7 +361,37 @@ signal.signal(signal.SIGTERM, _handle_sigterm)
 
 详细排查步骤见 `references/troubleshooting.md`。
 
-### generate_daily_report.py 常见 5 大 Bug + 跨脚本标签 Bug\n\n该脚本在 `build_report()` 执行期间本身正在 `etl_run` 上下文中，会产生自引用问题。4 个核心 bug + 1 个跨脚本标签 bug 模式及验收 checklist 见 `references/generate_daily_report_bugs.md`。
+### Coze CLI 文件下载
+
+`coze agent file download` 命令在 CLI v0.3.2 中**可用**（已验证 2026-06-26）。子命令：`list`, `write`, `read`, `edit`, `upload`, `download`。
+
+#### 下载脚本（已废弃）
+
+```bash
+# 下载方式切换：
+# 1. 如果文件已存在（Coze 桌面端直接写入）→ 跳过
+# 2. 如果 coze CLI 支持下载 → 用 CLI
+# 3. 如果 Coze 报告已就绪 → 跳过并提示（报告内容可替代）
+# 4. 否则 → 静默跳过，不报错
+```
+
+**实现**：脚本必须幂等（文件已存在则跳过），不能因 CLI 不支持而导致 cron 失败。Coze 同步文件优先由 Coze 桌面端直接写入共享目录。
+
+#### `hermes_daily_report.py` 章节计数模式
+
+章节数量变化时必须使用 **动态计数**，不得硬编码：
+```python
+# ✅ 正确
+f"> 缺失 ({len(missing_chapters)}/{len(REQUIRED_SECTIONS)}): "
+
+# ❌ 错误（session 2026-06-26 发现 2 处此类硬编码残留）
+f"> 缺失 ({len(missing_chapters)}/8): "
+```
+
+**检查命令**：
+```bash
+grep -n '/8' ~/my_quant_system/scripts/hermes_daily_report.py || echo "✅ 零残余"
+```
 
 ---
 
@@ -245,3 +401,38 @@ signal.signal(signal.SIGTERM, _handle_sigterm)
 - Coze bash 执行权限由桌面端控制，云端 Agent 无感
 - 文件写入优先用 stdout 输出，避免依赖沙箱外文件系统
 - 首次集成时，先跑验证脚本确认 bash 通路正常
+
+## Pitfalls
+
+### 日期格式混用（YYYYMMDD vs YYYY-MM-DD）
+
+Coze 推送 `daily_kline` 数据时可能混用 `YYYYMMDD`（如 `20260623`）和 `YYYY-MM-DD`（如 `2026-06-24`）两种日期格式。影响：
+- `ORDER BY date DESC` 时，`YYYY-MM-DD` 格式排在 `YYYYMMDD` 之前（`-` ASCII 45 < 数字 ASCII 48）
+- `WHERE date >= '20260623'` 查不到 `2026-06-24` 格式的数据，反之亦然
+
+**必须同时查两种格式**：
+```sql
+SELECT date, COUNT(*) FROM daily_kline
+WHERE date LIKE '2026-06-2%' OR date LIKE '2026062%'
+GROUP BY date ORDER BY date DESC;
+```
+
+**发现混用后**：向 Coze 报告，要求统一为 `YYYY-MM-DD`（ISO 8601）。
+
+### 共享目录不要混用两层
+`~/.hermes/health_shared/` 用于心跳/自检/临时工单（Hermes 写入，Coze 读取）。
+`~/quant_shared/`（→ `~/quant_shared_real/`）用于日报/同步文件（双方读写）。
+不要把日报文件写到 health_shared/，也不要把心跳写到 quant_shared/。
+
+### 路径必须统一用 symlink
+所有脚本必须用 `~/quant_shared/`，不得硬编码 `~/quant_shared_real/`。
+验证：`grep -rn "quant_shared_real" scripts/ --include="*.sh" --include="*.py" || echo "✅"`
+
+### coze CLI 已支持 file download
+CLI v0.3.2 确认可用 `coze agent file download`。之前标注为"不存在"是错误的（2026-06-26 修正）。
+
+### 章节计数不得硬编码
+`hermes_daily_report.py` 的章节数变化时必须用 `len(REQUIRED_SECTIONS)` 替代硬编码数字。
+
+### Session 历史工单报告 vs 日报
+日报（daily report）是定时自动生成的，由 cron 触发。而用户询问「这几天做了什么」时，应该用 `session_search` 浏览+搜索历史会话，然后现场生成一次性工单报告，不要尝试复用日报生成脚本（日报和工单报告的 scope/格式完全不同）。

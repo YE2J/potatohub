@@ -3,9 +3,14 @@
 行业→估值模型映射引擎
 
 功能：
-- 通过akshare获取股票所属申万行业分类
+- 通过 data_fetcher 层的多来源获取股票所属申万行业分类
 - 根据行业自动推荐估值模型
 - 返回模型参数配置
+
+数据来源优先级：
+ ① 问财行业 JSON（含 sw_l1）
+ ② 东方财富 industry JSON（s申万二级 → 一级映射）
+ ③ Tushare stock_basic（行业字段兜底）
 
 用法：
   python industry_mapper.py --stock-code 600519
@@ -279,6 +284,43 @@ INDUSTRY_MODEL_MAP = {
         "pe_threshold_overvalue": 28,
         "notes": "轻工制造看成本控制和出口景气度"
     },
+    "非银金融": {
+        "primary_model": "PE",
+        "secondary_models": ["PB"],
+        "key_metrics": ["ROE", "杠杆率", "投资收益", "管理资产规模"],
+        "default_wacc": 0.09,
+        "pe_threshold_undervalue": 12,
+        "pe_threshold_overvalue": 30,
+        "notes": "非银金融（多元金融）以PE+PB结合判断"
+    },
+    "综合": {
+        "primary_model": "PE",
+        "secondary_models": ["PB"],
+        "key_metrics": ["毛利率", "ROE", "业务结构"],
+        "default_wacc": 0.09,
+        "pe_threshold_undervalue": 15,
+        "pe_threshold_overvalue": 35,
+        "notes": "综合行业业务多元，以PE兜底，估值不够精确"
+    },
+    "建筑材料": {
+        "primary_model": "PE",
+        "secondary_models": ["EV/EBITDA"],
+        "key_metrics": ["毛利率", "产能利用率", "水泥/玻璃价格", "区域供需"],
+        "default_wacc": 0.09,
+        "pe_threshold_undervalue": 10,
+        "pe_threshold_overvalue": 25,
+        "notes": "建筑材料看区域供需和价格周期"
+    },
+    "环保": {
+        "primary_model": "PE",
+        "secondary_models": ["PEG"],
+        "key_metrics": ["在手订单", "毛利率", "运营收入占比", "现金流"],
+        "default_wacc": 0.09,
+        "default_growth_rate": 0.12,
+        "pe_threshold_undervalue": 15,
+        "pe_threshold_overvalue": 35,
+        "notes": "环保看订单增长和运营现金流"
+    },
 }
 
 
@@ -308,6 +350,17 @@ def get_stock_industry(stock_code: str) -> dict:
         # 从 Hermes JSON 获取申万二级行业（如"白酒Ⅱ"）
         sw_level2 = get_stock_industry_name(stock_code)
         result["industry"] = sw_level2
+
+        # 如果已是一级行业名称，直接匹配
+        if sw_level2 in INDUSTRY_MODEL_MAP:
+            result["matched_category"] = sw_level2
+            result["model_config"] = INDUSTRY_MODEL_MAP[sw_level2]
+            print(f"  行业: {result['industry']}")
+            print(f"  匹配分类: {result['matched_category']}")
+            print(f"  推荐模型: {result['model_config']['primary_model']}")
+            if result['model_config'].get('secondary_models'):
+                print(f"  辅助模型: {', '.join(result['model_config']['secondary_models'])}")
+            return result
 
         # 申万二级 → 一级行业映射
         level1 = SW_LEVEL2_TO_LEVEL1.get(sw_level2, None)

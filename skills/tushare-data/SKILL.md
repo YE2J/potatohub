@@ -159,28 +159,35 @@ requirements:
 
 ***
 
-## 权限边界（2026-06-20 实测确认）
+## 权限边界（2026-07-01 实测确认）
 
-⚠️ Tushare 接口分基础权限和增值权限。以下接口需要高积分（2000+），**当前不可用**：
+当前积分：**5000**（500元/年）。以下接口已验证可用：
 
-| 接口 | 功能 | 状态 |
-|------|------|------|
-| `moneyflow` | 个股资金流向（超大/大/中/小单） | ❌ 40203 无权限 |
-| `fina_indicator` | 财务指标（ROE/毛利率/净利率等） | ❌ 40203 无权限 |
-| `stk_surv` | 机构调研 | ❌ 40203 无权限 |
+| 接口 | 功能 | 最低积分 |
+|------|------|---------|
+| `daily` / `weekly` / `monthly` | 日/周/月线行情 | 120 |
+| `stock_basic` / `trade_cal` | 基础信息/交易日历 | 120 |
+| `income` / `balancesheet` / `cashflow` | 三大报表 | 2000 |
+| `fina_indicator` | 财务指标（ROE/毛利率/净利率等） | 2000 |
+| `daily_basic` | 日估值指标（PE/PB/PS/换手率/市值） | 2000 |
+| `moneyflow` | 个股资金流向（旧版） | 2000 |
+| `moneyflow_dc` | 个股资金流向（东方财富，含超大单/大单/中单/小单净额） | **5000** |
+| `moneyflow_ind_dc` / `moneyflow_mkt_dc` | 板块/大盘资金流向（DC） | 5000 |
+| `moneyflow_hsgt` | 沪深港通资金流向 | 2000 |
+| `research_report` / `report_rc` | 研报/盈利预测 | 2000 |
+| `forecast` / `express` | 业绩预告/快报 | 2000 |
+| `stk_limit` | 涨跌停价格 | 2000 |
+| `stk_holdernumber` | 股东人数 | 2000 |
+| `stk_holdertrade` | 股东增减持 | 2000 |
+| `margin` / `margin_detail` | 融资融券 | 2000 |
+| `top_list` / `top_inst` | 龙虎榜 | 2000 |
+| `anns_d` | 上市公司公告 | 2000 |
+| `index_daily` / `sw_daily` | 指数/申万行业日线 | 2000 |
+| `cn_cpi` / `cn_ppi` / `cn_pmi` / `cn_gdp` | 宏观经济 | 120~2000 |
+| `shibor` / `shibor_lpr` | 利率数据 | 120 |
+| `us_tycr` | 美国国债收益率 | 120 |
 
-以下接口**基础权限可用**：
-
-| 接口 | 功能 |
-|------|------|
-| `daily` | 日线行情（OHLCV） |
-| `stk_mins` | 分钟K线（1/5/15/30/60min） |
-| `income` / `balancesheet` / `cashflow` | 三大报表 |
-| `daily_basic` | 日估值指标（PE/PB/PS） |
-| `research_report` / `report_rc` | 研报/盈利预测 |
-| `stock_basic` / `trade_cal` | 基础信息/交易日历 |
-
-**在使用前必须先查询接口权限状态，不要假设可用。** 增值接口不可用时优先走问财 OpenAPI 或 akshare 替代。
+**每分钟频次：500次**，日常数据无总量上限。数据源优先级：Tushare > 问财备用 > 腾讯API兜底。
 
 ## Environment check
 
@@ -282,7 +289,8 @@ export TUSHARE_TOKEN=your_token
 
 常用接口：
 
-- `moneyflow`
+- `moneyflow`  ⭐ 个股资金流向（旧版）
+- `moneyflow_dc`  ⭐ 个股资金流向（东方财富，全市场一次返回，每日盘后）
 - `moneyflow_hsgt`
 - `hsgt_top10`
 - `top_list`
@@ -309,6 +317,20 @@ export TUSHARE_TOKEN=your_token
 - `ths_member`
 - `dc_index`
 - `dc_member`
+
+#### ⚠️ index_daily API 行为陷阱（2026-07-03 实测）
+
+**不支持多指数批量查询**：`pro.index_daily(ts_code='000001.SH,399001.SZ,...')` 返回空结果。每个指数必须独立调用。
+
+**申万行业指数日线（801020.SI 等）在 5000 积分档次下不可用**：`pro.index_daily(ts_code='801020.SI')` 返回空 DataFrame。如需行业指数日线需升级 Tushare 权限或使用东方财富/同花顺替代接口。
+
+**pct_chg 字段需要显式写入**：旧导入管线遗漏了 `pct_chg` 字段（`index_daily` 表仅 000300.SH 有数据且 pct_chg 全为 NULL）。增量脚本必须确保此字段被填充。
+
+**已部署的指数管线**：`~/.hermes/scripts/daily_index_tushare.py` + shell wrapper，Hermes cron 交易日 18:15 运行。5 个指数各独立调用一次 `pro.index_daily()`，INSERT OR REPLACE 写入 `index_daily` 表（含 pct_chg）。
+
+**增量更新建议**：编排在股票日线管线（18:00）之后、资金流管线（18:30）之前，5 次独立 API 调用/日。
+
+详细流程和陷阱见 `references/index-daily-pipeline.md`。
 
 ### 7. 打板 / 情绪 / 活跃度
 
@@ -462,6 +484,27 @@ export TUSHARE_TOKEN=your_token
 - 参数错误、权限不足、字段错误不要盲重试
 - 批量拉取时加入节流，避免高频撞限
 
+#### ⚠️ daily_basic 限频陷阱（实测 2026-07-11）
+
+**`daily_basic` 的限频是 1次/小时 PER TS_CODE**（不是全局1次/小时）。
+这意味着按 `ts_code` 逐只拉取历史数据时，每只股票需要等1小时才能拉下一只——110只股票需要110小时。
+
+**绕过方法**：使用 `trade_date` 参数批量拉全市场，一次调用返回当天全部~5000只股票的PE/PB数据，此方式不受ts_code级限频影响：
+
+```python
+# ✅ 正确：按trade_date批量拉（1次调用=全市场）
+df = pro.daily_basic(trade_date='20260710',
+    fields='ts_code,trade_date,close,pe_ttm,pb,total_mv')
+
+# ❌ 错误：逐ts_code拉历史（110只=110小时）
+# 仅在计算channel_position需要历史PE时，才对估值表内的少数股票逐只拉
+```
+
+**推荐策略**（估值刷新场景）：
+1. 用 `daily_basic(trade_date=...)` 一次获取最新日全市场PE快照
+2. 仅对 `valuation_results` 表已有的股票（~110只），按 `ts_code` 逐只拉1年历史PE用于通道计算
+3. `fina_indicator` 不支持批量，只能逐只拉（~0.35s/只，110只≈40秒，可接受）
+
 ### 分段合并
 
 分段拉取后：
@@ -573,13 +616,34 @@ export TUSHARE_TOKEN=your_token
 3. 必要时联动财务质量
 4. 输出排序、极值、口径说明
 
-### 5. 资金流追踪
+### 5. 资金流追踪（Tushare DC 优先）
 
 适用：
 
 - 最近资金在买什么
-- 北向最近流向哪里
 - 主力资金流入最多的是谁
+- 哪个板块最吸金
+- 大单/中单/小单净额分析
+
+**数据源优先级：**
+
+1. **`moneyflow_dc`（东方财富）** — 首选，5000积分可用，每日盘后更新，全市场一次性返回（~6000只）
+2. **`moneyflow`（旧版）** — 次选，2000积分，有买卖量+额明细
+3. 板块资金：`moneyflow_ind_dc` / `moneyflow_mkt_dc`
+
+**moneyflow_dc 字段映射要点（⚠️ 常见陷阱）：**
+
+| Tushare字段 | 含义 | 映射到DB字段 | 单位 |
+|------------|------|-------------|------|
+| `net_amount` | 主力净额（超大单+大单） | `main_net_amt` | 万元→元(×10000) |
+| `buy_elg_amount` | 超大单**净额**（不是买入额） | `elg_net_amt` | 万元→元(×10000) |
+| `buy_lg_amount` | 大单净额 | `lg_net_amt` | 万元→元(×10000) |
+| `buy_md_amount` | 中单净额 | `md_net_amt` | 万元→元(×10000) |
+| `buy_sm_amount` | 小单净额 | `sm_net_amt` | 万元→元(×10000) |
+
+> ⚠️ `buy_*` 虽是净额（可正可负），不是买入额。**不能填进 `*_buy_amt` 列！**
+
+**数据口径差异：** 东方财富 vs 同花顺对\"大单/小单\"的划分阈值不同，同一股票同一天可能差异巨大。查询时需明确说明数据来源。
 
 默认流程：
 
@@ -657,6 +721,23 @@ export TUSHARE_TOKEN=your_token
 
 ***
 
+## Batch Operations (Python Library, not MCP)
+
+For bulk historical data fills (7+ stocks), use the installed `tushare` Python library directly rather than individual MCP calls:
+
+```python
+import tushare as ts
+ts.set_token(TOKEN)  # extract from ~/.hermes/config.yaml MCP URL
+pro = ts.pro_api()
+df = pro.daily(ts_code='300308.SZ', start_date='20250101', end_date='20251214')
+```
+
+**Token location**: Embedded in the MCP server URL in `~/.hermes/config.yaml` — NOT in `~/.tushare/token` or env vars.
+
+**Key pattern**: `INSERT OR IGNORE` + `executemany` for gap-free backfill. Rate limit: 500 calls/min → `time.sleep(0.35)` between calls.
+
+Full pattern and column mapping in `references/batch-data-fill.md`.
+
 ## Data quality rules
 
 拉取完成后，至少做这些检查：
@@ -682,14 +763,72 @@ export TUSHARE_TOKEN=your_token
 
 ***
 
+## 数据源管理（多源聚合策略）
+
+当本地数据库同时存在多个数据源的资金流向数据时：
+
+| 数据源 | 范围 | 特点 | 优先级 |
+|-------|------|------|--------|
+| `ths` | 同花顺明细（2007~） | 有买卖量+额明细，14M行 | 回测/精确分析 |
+| `ths_snapshot` | 同花顺快照 | 仅净额，快照级 | 过渡期间备用 |
+| `tushare_dc` | **东方财富DC（增量主力）** | 仅净额，每日17点更新，全市场~6000只 | ⭐ 晨报/日常首选 |
+| `eastmoney` | 东方财富旧版 | 零星数据 | 忽略 |
+
+**查询策略：**
+- 晨报/日常分析 → `tushare_dc` 优先
+- 历史回测（需要买卖明细） → `ths` 数据源
+- 多源聚合时按 `data_source` 做优先级聚合，不要直接 SUM
+
+## 每日增量更新管道
+
+`moneyflow_dc` 全市场每日4000+只，1次API调用即可覆盖，适用于增量cron脚本：
+
+```bash
+# Hermes cron（no_agent模式），工作日18:45执行
+# 脚本路径：~/.hermes/scripts/daily_moneyflow_tushare_dc.py
+# 数据写入：moneyflow_daily 表，data_source='tushare_dc'
+#
+# 自动检测最新交易日，跳过已有数据日
+# 万元→元转换（×10000）
+# 日志：~/.logs/moneyflow_tushare_dc.log
+```
+
+**替代关系：** Tushare 5000积分可替代 Coze 的数据提供功能和 akshare 财务数据源。
+
+### 日线 K-Line 增量管道
+
+`pro.daily(trade_date=xxx, adj='qfq')` 一次 API 调用返回全市场 5500+ 只股票日线，适用于增量 cron：
+
+- **字段映射**：`change`/`pct_chg` 直接，`amplitude` 计算（`(high-low)/pre_close*100`），`turnover` 需另调 `daily_basic`
+- **代码映射**：`ts_code`（如 `000001.SZ`）→ bare code（如 `000001`），通过 `stock_basic` 建立 symbol→ts_code 字典
+- **日期归一化**：Coze 旧数据混用 `YYYYMMDD` 和 `YYYY-MM-DD`，写入前必须统一
+- **停牌**：Tushare 自动过滤停牌股，无需特殊处理
+
+详细流程和陷阱见 `references/kline-incremental-pipeline.md`。
+
 ## Cache and reuse rules
 
-为了让 skill 可长期复用，应优先支持：
+基础表缓存（如 `stock_basic`、交易日历、指数基础信息）可以减少 API 调用、加速查询。
 
-- 基础表缓存（如 `stock_basic`、交易日历、指数基础信息）
-- 增量更新，而不是每次全量重拉
-- 大任务断点续跑
-- 结果文件规范命名
+### Local Cache Pattern: trade_cal 示例
+
+`trade_cal` 是最高频调用的参考表之一（多条管线都要查最新交易日）。缓存到本地 SQLite：
+
+```sql
+CREATE TABLE IF NOT EXISTS trade_cal (
+    exchange TEXT,
+    cal_date TEXT,
+    is_open INTEGER,
+    pretrade_date TEXT,
+    PRIMARY KEY (exchange, cal_date)
+);
+```
+
+**一次性全量导入**：遍历 SSE + SZSE，`start_date='19901201'`，INSERT OR REPLACE。
+**增量同步**：每周查 `MAX(cal_date)` 后只拉新增部分（见 Hermes cron `交易日历-Tushare同步`）。
+**查询路由**：优先查本地表，表不存在或无数据时回退 `pro.trade_cal()` API。
+
+其他适合同一模式的参考表：`stock_basic`、`index_basic`、`fund_basic`。
 
 推荐命名格式：
 
@@ -748,7 +887,8 @@ export TUSHARE_TOKEN=your_token
 - `cashflow`
 - `forecast`
 - `express`
-- `moneyflow`
+- `moneyflow`  ⭐ 个股资金流向（旧版）
+- `moneyflow_dc`  ⭐ 个股资金流向（东方财富，全市场一次返回，每日盘后）
 - `moneyflow_hsgt`
 - `hsgt_top10`
 - `top_list`

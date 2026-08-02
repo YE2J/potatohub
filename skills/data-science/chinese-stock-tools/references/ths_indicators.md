@@ -70,13 +70,54 @@
 
 ## 5. 主力持仓
 
-**原版公式**：
-- 核心 = LV_D_SUPER_HLD_RATIO（同花顺LV2独有数据）
-- DDX = ((特大净买+大单净买*0.7)/流通股本)*100
-- 持仓 = X1 + DDX，极端值时DDX影响缩减（>95%或<5%时*0.1）
-- 钳位到 [2.08, 97.18]
+**原版公式**（通达信语法，用户2026-07提供）：
 
-**LV2替代**：`LV_D_SUPER_HLD_RATIO` 无法从外部获取。建议用 DDX 累积 + 大单净占比近似估算。
+```
+IF(ISNULL(LV_D_SUPER_HLD_RATIO[-1]) != 0) {
+    b1 := BIGBUYCOUNT1[-1] + WAITBUYCOUNT1[-1];   // 特大单买笔数+挂单(昨日)
+    s1 := BIGSELLCOUNT1[-1] + WAITSELLCOUNT1[-1];
+    b2 := BIGBUYCOUNT2[-1] + WAITBUYCOUNT2[-1];   // 大单买笔数+挂单(昨日)
+    s2 := BIGSELLCOUNT2[-1] + WAITSELLCOUNT2[-1];
+    DDX := ((b1 - s1) + (b2 - s2) * 0.7) / TV_D_PUBLIC_SHARES * 100;
+    x1 := LV_D_SUPER_HLD_RATIO * 100;   // 前日真实持仓值
+    ret := x1 + DDX;
+    // 三段衰减
+    IF(DDX > 0) {
+        IF(x1 > 95) ret := x1 + DDX * 0.1;
+        ELSE IF(x1 > 90) ret := x1 + DDX * 0.5;
+        ELSE IF(x1 > 85) ret := x1 + DDX * 0.8;
+    }
+    IF(DDX < 0) {
+        IF(x1 < 5) ret := x1 + DDX * 0.1;
+        ELSE IF(x1 < 10) ret := x1 + DDX * 0.5;
+        ELSE IF(x1 < 15) ret := x1 + DDX * 0.8;
+    }
+    ret := clamp(ret, 2.08, 97.18);
+}
+```
+
+**关键依赖**：
+- `LV_D_SUPER_HLD_RATIO` — 同花顺L2独有字段，每日真实主力持仓率
+- `BIGBUYCOUNT1/BIGSELLCOUNT1` — **订单笔数**（不是金额/不是成交量）
+- `TV_D_PUBLIC_SHARES` — 流通股本（股）
+- 均用前一日 `[-1]` 数据
+
+**Python翻译注意事项**：
+- `BIGBUYCOUNT1` 等笔数无法从公开数据获取，用金额 `BIGBUYMONEY1` 近似
+- `TV_D_PUBLIC_SHARES` 需要流通股本数据，可从 `股本结构.float_a_shares` 表（如存在）获取，或估算
+- `[-1]` 偏移意味着用**昨日**的资金流数据调整**今日**的持仓
+- 三段衰减的阈值（95/90/85/5/10/15）是固定参数
+
+**无LV2数据时的替代方案**：
+- 用 `elg_buy_amt + lg_buy_amt*0.7` 代替 `(b1+b2)`，`amount` 代替 `TV_D_PUBLIC_SHARES`
+- 用递推代替 `LV_D_SUPER_HLD_RATIO`：`holding[t] = holding[t-1] + DDX_shifted[t] * SCALE`
+- SCALE 参数个股相关（可差10倍），无法统一适用于所有股票
+- 当前代码位置：`strategy_library/indicators/_zhuli_holdings.py`
+
+**已验证局限**：
+- 精确值依赖LV2专有数据，外部无法完美复刻
+- 趋势方向可信，绝对数值不可信
+- 东方锆业偏差+34pp，天华新能偏差+9pp（SCALE=0.5下）
 
 ## 6. 综合信号生成
 

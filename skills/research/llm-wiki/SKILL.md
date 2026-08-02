@@ -1,7 +1,7 @@
 ---
 name: llm-wiki
 description: "Karpathy's LLM Wiki: build/query interlinked markdown KB."
-version: 2.1.0
+version: 2.2.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -98,13 +98,35 @@ at hand before creating anything new.
 
 When the user asks to create or start a wiki:
 
-1. Determine the wiki path (from `$WIKI_PATH` env var, or ask the user; default `~/wiki`)
-2. Create the directory structure above
-3. Ask the user what domain the wiki covers — be specific
-4. Write `SCHEMA.md` customized to the domain (see template below)
-5. Write initial `index.md` with sectioned header
-6. Write initial `log.md` with creation entry
-7. Confirm the wiki is ready and suggest first sources to ingest
+1. **Determine the wiki path** (from `$WIKI_PATH` env var, or ask the user; default `~/wiki`)
+2. **Check for pre-existing content** — before creating the formal structure, scan the target
+   directory for existing `.md` files. Users often have ad-hoc notes already in place:
+   ```bash
+   ls "$WIKI"/*.md "$WIKI"/**/*.md 2>/dev/null
+   ```
+   If found, catalog them: read their frontmatter (if any), note the organizational scheme
+   they follow (domain-based folders, flat list, etc.), and preserve that scheme when
+   building the index. Don't force existing pages into entities/concepts/comparisons/
+   directories if they follow a different pattern — layer the formal structure on top
+   while keeping the existing files in place.
+3. **Create the directory structure** (`raw/`, `entities/`, `concepts/`, `comparisons/`,
+   `queries/`, `_archive/`). The `mkdir -p` won't clobber existing files.
+4. **Ask the user what domain(s) the wiki covers** — be specific. If pre-existing content
+   already defines implicit domains, propose them to the user for confirmation.
+5. **Write `SCHEMA.md`** customized to the domain(s) (see template below). Include a
+   tag taxonomy section per domain. Update the conventions section to note any
+   pre-existing organizational patterns that are being preserved.
+6. **Write initial `index.md`** with sectioned header:
+   - If pre-existing content was found, catalog every page under its domain section
+     with a one-line summary (read each page briefly). Set the total page count correctly.
+   - Use domain-based sections (not type-based) as the top-level grouping when the
+     wiki covers multiple domains. Each domain section lists its pages with
+     `[[wikilinks]]` + summary.
+7. **Write initial `log.md`** with creation entry, noting:
+   - The wiki path and domains
+   - How many pre-existing pages were discovered and integrated
+   - All files created
+8. **Confirm the wiki is ready** and suggest first sources to ingest
 
 ### SCHEMA.md Template
 
@@ -214,8 +236,9 @@ When new information conflicts with existing content:
 
 ### index.md Template
 
-The index is sectioned by type. Each entry is one line: wikilink + summary.
+Choose the organizational scheme based on wiki shape:
 
+**Single-domain / type-organized wikis** — section by page type:
 ```markdown
 # Wiki Index
 
@@ -232,6 +255,23 @@ The index is sectioned by type. Each entry is one line: wikilink + summary.
 
 ## Queries
 ```
+
+**Multi-domain wikis** (or wikis with pre-existing content) — section by domain:
+```markdown
+# Wiki Index
+
+> Content catalog. Every wiki page listed under its domain with a one-line summary.
+> Read this first to find relevant pages for any query.
+> Last updated: YYYY-MM-DD | Total pages: N
+
+## [Domain 1]
+
+## [Domain 2]
+```
+
+Domain sections list pages with `[[wikilinks]]` + one-line summary. Cross-domain
+pages (e.g., methodology) can get their own section or be noted under relevant domains
+with a reference pointer.
 
 **Scaling rule:** When any section exceeds 50 entries, split it into sub-sections
 by first letter or sub-domain. When the index exceeds 200 entries total, create
@@ -492,8 +532,12 @@ vault in Obsidian on your laptop/phone — changes appear within seconds.
   200 lines. Move detailed analysis to dedicated deep-dive pages.
 - **Ask before mass-updating** — if an ingest would touch 10+ existing pages, confirm
   the scope with the user first.
+- **Initialize with a content scan** — before creating directories and schema, check if the
+  target path already has markdown files. Users may have a loose collection of notes there.
+  Read them, catalog them into the initial index, and preserve their organizational scheme
+  alongside the formal structure. Forgetting this step leaves existing knowledge orphaned.
 - **Rotate the log** — when log.md exceeds 500 entries, rename it `log-YYYY.md` and start fresh.
-  The agent should check log size during lint.
+  (The lint step already checks log size — don't duplicate that check.)
 - **Handle contradictions explicitly** — don't silently overwrite. Note both claims with dates,
   mark in frontmatter, flag for user review.
 

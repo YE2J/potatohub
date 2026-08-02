@@ -221,9 +221,39 @@ delegation:
   reasoning_effort: high
 ```
 
+## Subagent Display Behavior (v0.17.0+)
+
+Since Hermes v0.17.0, **top-level `delegate_task` calls force background mode**. Subagents no longer show inline progress (spinner + per-task completion lines). Instead:
+- `delegate_task` returns immediately with `{"status": "dispatched"}`
+- Subagent results arrive as **separate new messages** later
+- Use `/agents` to monitor active subagents; `/stop` to cancel them
+
+Full details: `skill_view(name="dynamic-model-routing", file_path="references/delegate-task-v0.17-background-mode.md")`
+
 ## Multi-Agent Orchestration (Advanced)
 
-`delegate_task` only supports ONE delegation model per session. For multi-agent workflows where different agents handle different task types (GLM for code, Kimi for research, DeepSeek for strategy), use **profile-based oneshot dispatch**:
+`delegate_task` only supports ONE delegation model per session. For multi-agent workflows where different agents handle different task types, use **Kanban-based dispatch** (recommended) or **profile-based terminal dispatch**.
+
+### Kanban-based dispatch (recommended for multi-model)
+
+The Kanban system dispatches tasks to profile-specified models natively, bypassing the delegate_task bug entirely. The gateway spawns each worker profile directly with its own model.
+
+**From the default session (direct kanban_create):**
+```python
+# Parallel cards, each assigned to a different model's profile
+t1 = kanban_create(title="Research X", assignee="worker-kimi", body="...")["task_id"]
+t2 = kanban_create(title="Code Y", assignee="worker-glm", body="...")["task_id"]
+t3 = kanban_create(title="Audit Z", assignee="worker-auditor", body="...")["task_id"]
+
+# Synthesis gated on all three
+kanban_create(title="Synthesize", assignee="orchestrator", body="...", parents=[t1, t2, t3])
+```
+
+**Flow**: Cards → gateway dispatcher (~60s cycle) → spawning worker profiles → results as `kanban_show()`
+
+**Advantages:** structured handoffs (summary + metadata + artifacts), dependency gating, crash survival, audit trail.
+
+### Profile-based oneshot dispatch (terminal fallback)
 
 ```bash
 # Dispatch to different agents in parallel
@@ -235,17 +265,19 @@ cat /tmp/glm_out.txt /tmp/kimi_out.txt
 
 Each worker profile has its own `reasoning_effort` preset, so complex tasks automatically get deep reasoning.
 
-**Limitations of this approach:**
+**Limitations:**
 - Results come back as raw terminal output (not structured)
 - No built-in progress tracking
 - Each `hermes -z` call starts a fresh session with no shared context
 - Must pass all context explicitly in the prompt
 
-**When to use delegate_task vs hermes -z:**
-| | delegate_task | hermes -z --profile |
-|---|---|---|
-| Model selection | One fixed model | Different model per call |
-| Reasoning effort | One fixed level | Per-profile preset |
-| Parallel execution | ✅ batch mode | ✅ shell `&` |
-| Result handling | ✅ auto-returned | ⚠️ read from file |
-| Context passthrough | ✅ inherits | ❌ must embed in prompt |
+**Dispatch method comparison:**
+| | delegate_task | hermes -z --profile | Kanban |
+|---|---|---|---|
+| Model selection | One fixed model | Different model per call | **Different model per card** ✅ |
+| Reasoning effort | One fixed level | Per-profile preset | Per-profile preset |
+| Parallel execution | ✅ batch mode | ✅ shell `&` | ✅ gateway dispatcher |
+| Result handling | ✅ auto-returned | ⚠️ read from file | ✅ structured handoffs |
+| Context passthrough | ✅ inherits | ❌ must embed in prompt | ✅ body + parents |
+| Crash survival | ❌ | ❌ | ✅ SQLite-persisted |
+| Audit trail | ❌ | ❌ | ✅ event log |

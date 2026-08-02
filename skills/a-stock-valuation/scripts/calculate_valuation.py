@@ -39,24 +39,8 @@ def get_latest_price(stock_code: str) -> float:
     return get_stock_price(stock_code)
 
 
-
-
-
-
-
-    if len(income_df) >= 4:
-        recent_rev = income_df.tail(4)['营业收入'].apply(safe_float).values
-        if recent_rev[0] > 0 and recent_rev[-1] > 0:
-            result["revenue_cagr_3y"] = (recent_rev[-1] / recent_rev[0]) ** (1 / 3) - 1
-
-    return result
-
-
-
-
 # ============================================================
 # 估值模型实现
-# ============================================================
 
 def pe_valuation(financials: dict, price: float, params: dict) -> dict:
     """

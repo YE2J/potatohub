@@ -1,79 +1,55 @@
-# 资金流数据适配方案
+# 资金流数据适配方案（2026-06-29 更新）
+
+> ⚠️ **数据源已切换**：从东方财富/问财降级方案 → **同花顺 THS 全量数据**。
+> 现在 moneyflow_daily 表有 5,663 只股票的完整四档量+额，不再需要降级估算。
+> 详见 `references/ths-moneyflow-import.md`。
 
 ## 背景
 
-暗盘资金（`calc_dark_pool`）和主力持仓（`calc_zhuli_holdings`）两个同花顺指标需要 LV2 级别的资金流数据。由于免费数据源（Tushare 低积分、东方财富 API 被墙）无法获取真实 moneyflow，系统采用**降级估算 → 数据库留位 → 未来升级**的三段式架构。
+2026-06-29 购入同花顺 THS 全量资金流向数据（quant-data/），一次性导入 moneyflow_daily 表
+14,232,762 行，覆盖所有四档（小/中/大/特大单）买卖量（手）+ 额（万元），2007~今。
+之前基于东方财富 push2his（仅净额，~830 行，100 只）和问财 API的降级方案已停用。
 
-## 架构
+## 当前架构
 
 ```
-数据源（未来）                   当前降级方案
-┌──────────────────┐      ┌─────────────────────┐
-│ Tushare moneyflow │      │ K线数据估算          │
-│ (需 ≥2000积分)    │      │ pct_chg × vol × close│
-│ 东方财富资金流API  │      │ → 按比例分配买卖     │
-└────────┬─────────┘      └──────────┬──────────┘
-         │                           │
-         ▼                           ▼
-  ┌──────────────────────────────────────────┐
-  │  MoneyflowAdapter                        │
-  │  strategy_library/adapters/moneyflow.py  │
-  │                                          │
-  │  get_moneyflow(code) → DataFrame         │
-  │  列: BIGBUYMONEY1, BIGSELLMONEY1, ...    │
-  │       MONEY, BIGBUYCOUNT1, ...           │
-  └──────────────────┬───────────────────────┘
-                     │
-         ┌───────────┴───────────┐
-         ▼                       ▼
-  calc_dark_pool()        calc_zhuli_holdings()
-  (_dark_pool.py)         (_zhuli_holdings.py)
+THS 资金流向数据（data_source='ths'）
+  5,663 只 A 股, 14M 行, 2007~2026
+  四档买卖量+额，逐行净流入
+        │
+        ▼
+  MoneyflowAdapter
+  strategy_library/adapters/moneyflow.py
+  
+  get_moneyflow(code, start, end) → DataFrame
+  列: elg/lg/md/sm 各档 buy_vol/sell_vol/buy_amt/sell_amt
+      main_net_amt, net_mf_amt, net_mf_vol
+        │
+        ├──→ calc_dark_pool()   — 暗盘资金（完整模式）
+        └──→ calc_zhuli_holdings() — 主力持仓（完整模式）
 ```
 
-## 数据库表
+## moneyflow_daily THS 字段
 
-```sql
-CREATE TABLE moneyflow_daily (
-    stock_code TEXT,
-    date TEXT,
-    main_net_amt REAL,    -- 主力净流入
-    lg_buy_amt REAL,      -- 大单买入
-    lg_sell_amt REAL,     -- 大单卖出
-    elg_buy_amt REAL,     -- 超大单买入
-    elg_sell_amt REAL,    -- 超大单卖出
-    md_buy_amt REAL, md_sell_amt REAL,
-    sm_buy_amt REAL, sm_sell_amt REAL,
-    net_mf_amt REAL,      -- 总净流入
-    data_source TEXT,     -- 来源: 'tushare' / 'eastmoney' / 'estimated'
-    PRIMARY KEY (stock_code, date)
-);
-```
+详情见 `references/ths-moneyflow-import.md`。
 
-## 升级路径
+## MoneyflowAdapter 列名映射
 
-获得 Tushare ≥2000 积分后：
-
-1. 在 Hermes Tushare MCP 配置中更新 API key
-2. 运行数据拉取脚本填充 `moneyflow_daily` 表
-3. `MoneyflowAdapter._from_db()` 自动读取真实数据
-4. 两个指标自动切换到完整模式（无需修改指标代码）
-
-## 列名映射
-
-MoneyflowAdapter 输出列 → 同花顺公式变量：
-
-| Adapter 输出 | 同花顺公式变量 | 说明 |
-|-------------|---------------|------|
-| `BIGBUYMONEY1` | BIGBUYMONEY1 | 特大单买入金额 |
-| `WAITBUYMONEY1` | WAITBUYMONEY1 | 特大单挂单买入（≈BIG*0.3） |
-| `BIGBUYMONEY2` | BIGBUYMONEY2 | 大单买入金额 |
-| `BIGSELLMONEY1` | BIGSELLMONEY1 | 特大单卖出金额 |
-| `MONEY` | MONEY | 总成交额 |
-| `BIGBUYCOUNT1` | BIGBUYCOUNT1 | 特大单买入笔数（当前不可得=0） |
-| `TV_D_PUBLIC_SHARES` | TV_D_PUBLIC_SHARES | 流通股本（当前不可得=0） |
+| Adapter 输出 | THS moneyflow_daily 列 | 说明 |
+|-------------|----------------------|------|
+| `BIGBUYMONEY1` | `buy_elg_amt` | 特大单买入金额(万元) |
+| `BIGSELLMONEY1` | `sell_elg_amt` | 特大单卖出金额(万元) |
+| `BIGBUYMONEY2` | `buy_lg_amt` | 大单买入金额(万元) |
+| `BIGSELLMONEY2` | `sell_lg_amt` | 大单卖出金额(万元) |
+| `BIGBUYVOL1` | `buy_elg_vol` | 特大单买入量(手) |
+| `BIGSELLVOL1` | `sell_elg_vol` | 特大单卖出量(手) |
+| `MONEY` | — | 用 daily_kline.amount 替代 |
+| `MAIN_NET_AMT` | `main_net_amt` | 主力净额(万元) |
+| `NET_MF_AMT` | `net_mf_amt` | 总净流入(万元) |
+| `DATA_SOURCE` | `'ths'` | 数据来源标识 |
 
 ## 注意事项
 
-- 降级模式仅提供信号参考，**不应用于实际交易决策**
-- 两个指标在 bridge.py 管线中已自动串联（dark_pool 先 merge，holdings 检测到已有列则跳过 merge）
-- 持有指标（zhuli_holdings）merge 逻辑：`if 'BIGBUYMONEY1' not in result.columns: merge; else: 跳过`
+- THS 数据自带 net_mf_amt（净流入总额），不需要从买卖差值推算
+- 两个指标（暗盘资金、主力持仓）现在都运行在完整模式，信号精度显著高于降级估算
+- 每日增量更新方式待与数据商确认后纳入系统

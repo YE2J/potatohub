@@ -1,7 +1,7 @@
 ---
 name: kanban-worker-fleet
 description: Set up and manage a fleet of Hermes worker profiles with different LLM backends, connected through the Kanban system for automatic task decomposition and distribution.
-version: 1.0.0
+version: 1.1.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos]
@@ -34,9 +34,33 @@ Kanban Board
   │  ready tasks picked up by dispatcher
   ▼
 Workers (parallel execution)
-  ├── worker-kimi    (Kimi K2.6)      — 研究员：深度搜索、多源分析、长文档、研究报告
-  └── worker-glm     (GLM-5)          — 工匠：代码实现、代码审查、结构化输出、精准执行
+  ├── worker-kimi     (Kimi K2.6)            — 研究员：搜索、分析、长文档、逻辑验证
+  ├── worker-glm      (GLM-5.1)              — 工匠：代码实现、架构评审、结构化输出
+  ├── worker-auditor  (MiniMax M2.7)         — 审计师：深度审计、交叉验证、性能安全
+  └── worker-xiaomi   (MiMo v2.5)            — 实现者：代码验证、可行性与边界条件
 ```
+
+### 4-Agent Code Review / Multi-Model Evaluation Pattern
+
+This is a **verified workflow** (2026-07-09, expanded 2026-07-12) for multi-model parallel evaluation:
+
+1. **Default profile** (you) drafts code or defines a task
+2. **Create 4 Kanban cards** — one per worker profile, all with **no parents**
+3. **Wait** for all workers to reach `done` status (check via `hermes kanban list`)
+4. **Create synthesis card** — `assignee=orchestrator` with **NO `--parent` flag**. Body says `kanban show` each worker's results
+5. Orchestrator runs → reads worker handoffs via `kanban show` → synthesizes → `kanban_complete`
+6. **You read the result** via `kanban_show(<synthesis_task_id>)` — results are NOT auto-pushed
+
+**CRITICAL: Do NOT use `parents=[t1,t2,t3]` on the synthesis card.**
+Any worker crash → synthesis card deadlocks forever. The parent-free pattern above avoids this entirely.
+
+**Typical latency:**
+- GLM-5.1: ~68s (code tasks)
+- Kimi K2.6: ~172s (research tasks)
+- MiniMax M2.7: ~80-118s (audit tasks)
+- MiMo v2.5: ~30-60s (lightning fast, code tasks)
+- Dispatch cycle: up to 60s before gateway picks up new cards
+- Total code review roundtrip: ~3-6 minutes (4 workers + synthesis)
 
 ## Setup Steps
 
@@ -60,17 +84,35 @@ hermes profile create worker-nvidia --clone-from default
 ### 3. Configure each worker's model
 
 ```bash
-# GLM (智谱) — latest: glm-5
+# GLM (智谱) — current: glm-5.1
 # Confirmed working via z.ai provider. Clear base_url (cloned profiles may inherit wrong endpoint).
 hermes config set model.provider z.ai --profile worker-glm
-hermes config set model.default glm-5 --profile worker-glm
+hermes config set model.default glm-5.1 --profile worker-glm
 hermes config set model.base_url '' --profile worker-glm
 
-# Kimi (Moonshot) — latest: kimi-k2.7-code
-# kimi-k2.6 is deprecated (May 2026). kimi-k2-thinking does NOT exist (returns 404).
-# kimi-k2.7-code is the newest coding model available via API.
-hermes config set model.provider kimi-coding-cn --profile worker-kimi
-hermes config set model.default kimi-k2.7-code --profile worker-kimi
+# Kimi (Moonshot) — current: kimi-k2.6
+# Available: kimi-k2.6 (general multimodal), kimi-k2.7-code (newest coding), kimi-k2.7-code-highspeed
+# ⚠ Provider name must be 'kimi-custom' (NOT 'kimi-coding-cn'). The latter fails with HTTP 401
+# even with a valid API key. 'kimi-custom' reads inline api_key from providers.kimi-custom.api_key.
+hermes config set model.provider kimi-custom --profile worker-kimi
+hermes config set model.default kimi-k2.6 --profile worker-kimi
+hermes config set model.base_url https://api.moonshot.cn/v1 --profile worker-kimi
+hermes config set providers.kimi-custom.base_url https://api.moonshot.cn/v1 --profile worker-kimi
+
+# MiniMax Auditor — minimax-m2.7
+hermes profile create worker-auditor --clone-from default
+hermes config set model.provider minimax --profile worker-auditor
+hermes config set model.default minimax-m2.7 --profile worker-auditor
+# Optionally write SOUL.md: cp ~/.hermes/skills/autonomous-ai-agents/minimax-auditor/SKILL.md ~/.hermes/profiles/worker-auditor/SOUL.md
+
+# Xiaomi MiMo — mimo-v2.5
+# Plugin: hermes-agent/plugins/model-providers/xiaomi (built-in)
+# ⚠ supports_health_check=False → hermes status does NOT show this provider even when key is valid
+hermes profile create worker-xiaomi --clone-from default
+hermes config set model.provider xiaomi --profile worker-xiaomi
+hermes config set model.default mimo-v2.5 --profile worker-xiaomi
+hermes config set model.base_url '' --profile worker-xiaomi
+# Write SOUL.md for reviewer identity
 
 # worker-qwen and worker-nvidia were removed 2026-06-16 (per user request).
 # To re-add them, create profiles and configure as documented in git history.
@@ -128,10 +170,10 @@ hermes gateway status
 
 ```bash
 # Test each worker individually (parallel loops on macOS are unreliable — no `timeout` command, and shell backgrounding can cause timeouts)
-for p in worker-glm worker-kimi; do
-  echo "=== $p ===" && hermes -p "$p" chat -q "只回OK" 2>&1 | tail -3
+for p in worker-glm worker-kimi worker-auditor worker-xiaomi; do
+  echo "=== $p ===\n$(hermes -p "$p" chat -q "只回OK" 2>&1 | tail -3)"
+  echo ""
 done
-# Each line should show "Messages: 2 (1 user, 0 tool calls)" = success
 # If 1 message or error text: check provider/key/model.
 
 ### End-to-end test
@@ -214,13 +256,25 @@ Run `hermes auth list` to check credential health. A `(re-auth may be required)`
 
 If ALL DashScope models (including previously-working ones like `qwen-plus`) suddenly return HTTP 400 "Arrearage — Access denied, account not in good standing": the account has overdue payment. Even models that were free-tier may be blocked. Top up at https://dashscope.aliyun.com/. After recharge, `qwen3.7-max` should work immediately.
 
-### Kimi model not found (kimi-k2-thinking)
+### Kimi provider name must be `kimi-custom`
 
-`kimi-k2-thinking` does NOT exist as an API model. The available Kimi models via `kimi-coding-cn` provider are:
-- `kimi-k2.6` — general-purpose multimodal (discontinued May 2026, still works)
+The provider name `kimi-coding-cn` is NOT recognized by Hermes for API key resolution. Even with a valid inline key in `providers.kimi-coding-cn.api_key`, calls return HTTP 401.
+
+**Fix:** Use `kimi-custom` as the provider name instead:
+```bash
+hermes config set model.provider kimi-custom --profile worker-kimi
+hermes config set providers.kimi-custom.api_key 'sk-...' --profile worker-kimi
+hermes config set providers.kimi-custom.base_url https://api.moonshot.cn/v1 --profile worker-kimi
+```
+
+**Available Kimi models (verified 2026-07-12):**
+- `kimi-k2.6` — general multimodal with reasoning, 262K context
+- `kimi-k2.5` — previous generation
 - `kimi-k2.7-code` — latest coding-specific model
+- `kimi-k2.7-code-highspeed` — high-speed variant of k2.7-code
+- Various `moonshot-v1-*` legacy models
 
-Use `kimi-k2.7-code` for the newest model. The "thinking" variant name is misleading — it's not an API endpoint.
+`kimi-k2.6` is still fully operational (confirmed working).
 
 ### Dispatcher not picking up tasks
 
@@ -230,7 +284,61 @@ Check:
 3. Tasks are in `ready` state (not `todo` with unmet dependencies)
 4. The worker profile's model actually works (test with `hermes -p <worker> chat -q "test"`)
 
-### Orchestrator lacks kanban tools
+### Worker crashes silently (protocol violation)
+
+Kimi K2.7-code has been observed to exit without calling `kanban_complete` or `kanban_block` (protocol violation), leaving the task `running` until the claim TTL expires. The dispatcher then retries (up to `failure_limit`). If the second retry also crashes, the task is marked `failed`.
+
+**Symptom:** `kanban show <task_id>` shows run outcome "worker exited cleanly (rc=0) without calling kanban_complete or kanban_block — protocol violation"
+
+**Impact:** If the synthesis card has `parents` dependency on the failed card, it stays `todo` forever. The parent task is NOT auto-promoted.
+
+**Fix (proactive — prevent the crash):** Add `fallback_providers` to `~/.hermes/profiles/worker-kimi/config.yaml`:
+```yaml
+fallback_providers:
+  - provider: deepseek
+    model: deepseek-v4-flash
+  - provider: deepseek
+    model: deepseek-v4-pro
+```
+When Kimi crashes, the dispatcher auto-falls back to DeepSeek for that card. Output quality differs but the review completes instead of deadlocking.
+
+**Fix (reactive — after crash):** `kanban_reclaim <failed_task_id>` to retry, or create a new synthesis card without parents using completed results only.
+
+### `hermes status` misses some providers
+
+Some providers have `supports_health_check=False` in their plugin definition, meaning `hermes status` (or `hermes auth list`) will NOT detect them even with a valid API key. This does NOT mean the provider is broken — the health check endpoint simply returns 401 even with a valid key.
+
+**Affected providers:**
+- **Xiaomi MiMo** (`xiaomi` provider, `XIAOMI_API_KEY`) — `/v1/models` returns 401 with valid key
+- **Kimi CN** (`kimi-custom` provider, `KIMI_CN_API_KEY`) — uses `api.moonshot.cn`, doesn't show in default status check which only looks at `KIMI_API_KEY`. Old provider name `kimi-coding-cn` is broken for auth — do NOT use it.
+
+**Diagnostic:** Test directly via curl:
+```bash
+# Xiaomi MiMo
+curl -s https://api.xiaomimimo.com/v1/chat/completions \
+  -H "Authorization: Bearer $XIAOMI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"mimo-v2.5","messages":[{"role":"user","content":"OK"}],"max_tokens":5}'
+
+# Kimi CN
+curl -s https://api.moonshot.cn/v1/chat/completions \
+  -H "Authorization: Bearer $KIMI_CN_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"kimi-k2.7-code","messages":[{"role":"user","content":"OK"}],"max_tokens":5}'
+```
+A valid response (non-401) confirms the key works.
+
+### 60s dispatch interval latency
+
+The gateway dispatcher runs on a `dispatch_interval_seconds` cycle (default 60s). New `ready` cards are not picked up immediately — they wait for the next tick. Combined with worker execution time (~1-3min), total round-trip for a 3-worker + synthesis workflow is ~3-5 minutes. Not suitable for quick iteration.
+
+**Speed-up: change to 15s:**
+```yaml
+# ~/.hermes/config.yaml
+kanban:
+  dispatch_interval_seconds: 15
+```
+**⚠ Requires gateway restart to take effect.** Run `hermes gateway restart` from a terminal OUTSIDE the gateway process (not from inside a Hermes session, which will get killed by SIGTERM). Use a separate terminal window or `launchctl kickstart -k gui/$(id -u)/ai.hermes.gateway`.
 
 The orchestrator profile needs `kanban` in its `platform_toolsets.cli` list to create tasks:
 
@@ -248,3 +356,9 @@ hermes kanban archive <task_id>          # Clean up completed tasks
 hermes gateway status                    # Check dispatcher health
 grep kanban ~/.hermes/logs/gateway.log   # Dispatcher activity log
 ```
+
+## References
+
+- `references/kimi-cn-xiaomi-provider-quirks.md` — Kimi-CN endpoint model list, Xiaomi MiMo status-check blind spots, and setup quirks
+- `references/worker-souls.md` — SOUL.md templates for each worker profile
+- `references/dashscope-china-endpoint.md` — DashScope/alibaba China endpoint troubleshooting

@@ -22,18 +22,18 @@
 ### Python 路径限制
 
 扣子沙箱无法使用 pyenv Python（libpython 被拦截），必须使用：
-- `~/my_quant_system/.venv/bin/python3`（优先，venv 中已装 akshare/pandas）
-- 或 `/usr/bin/python3`（系统自带，缺 akshare）
+- `~/my_quant_system/.venv/bin/python3`（优先，venv 中已装 tushare/pandas）
+- 或 `/usr/bin/python3`（系统自带）
 
 ## 数据获取（已内置实时降级，预拉取可选）
 
-> **2026-06-17 更新**：`data_fetcher.py` 已内置三层降级：JSON 缓存 → 腾讯 API → akshare。**无需预先拉取数据即可直接估值**。
+> **2026-07-02 更新**：`data_fetcher.py` 已切换到 Tushare 数据链：JSON 缓存 → 腾讯 API → Tushare。**无需预先拉取数据即可直接估值**。
 
 缓存目录（可选）：`~/.hermes/skills/a-stock-valuation/data/`
 
-如有本地 JSON 缓存则优先读取（秒级），缓存缺失时自动走腾讯行情 API（价格/PE/PB/市值）+ akshare 同花顺财务摘要（营收/净利/ROE）。
+如有本地 JSON 缓存则优先读取（秒级），缓存缺失时自动走腾讯行情 API（价格/PE/PB/市值）+ Tushare 财务接口（营收/净利/ROE）。
 
-> **东财 push2 已废弃**（2026-06-11 验证不可用），不要依赖。腾讯 API 格式参考 `references/tencent-api.md`，akshare 注意事项参考 `references/akshare-quirks.md`。
+> **东财 push2 已废弃**（2026-06-11 验证不可用），不要依赖。腾讯 API 格式参考 `references/tencent-api.md`，Tushare 注意事项参考 `references/akshare-quirks.md`（已标注废弃）。
 
 ## batch_valuation.py
 
@@ -89,7 +89,7 @@ cd ~/my_quant_system && python3 scripts/batch_valuation.py 600519,000001,000988
 
 ### 1. ~~预拉取数据缺失~~（已解决：2026-06-17）
 
-`data_fetcher.py` 已内置腾讯行情 API + akshare 同花顺财务实时降级，无需预拉取。详见 `references/tencent-api.md` 和 `references/akshare-quirks.md`。
+`data_fetcher.py` 已内置腾讯行情 API + Tushare 财务接口实时降级，无需预拉取。详见 `references/tencent-api.md`。
 
 ### 2. watchlist 含非股票代码 → 批量估值产生垃圾数据
 

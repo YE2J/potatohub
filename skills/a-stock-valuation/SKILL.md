@@ -1,9 +1,9 @@
 ---
 name: a-stock-valuation
-description: A股智能估值引擎；根据股票所属行业自动选择最合适的估值模型（银行→PB、科技→DCF+PEG、消费→PE+PEG等），基于akshare获取财务数据，输出自有估值区间和关键假设
+description: A股智能估值引擎；根据股票所属行业自动选择最合适的估值模型（银行→PB、科技→DCF+PEG、消费→PE+PEG等），基于Tushare获取财务数据，输出自有估值区间和关键假设
 dependency:
   python:
-    - akshare>=1.18.13
+    - tushare>=2.0.0
     - pandas>=2.3.0
     - numpy>=2.0.0
 ---
@@ -20,9 +20,9 @@ dependency:
 
 ## 核心能力
 
-1. **行业识别**：通过akshare获取股票所属申万行业分类
+1. **行业识别**：通过 data_fetcher 多来源（问财/东方财富/Tushare stock_basic）获取股票所属行业分类
 2. **模型选择**：根据行业特征自动匹配估值模型（银行→PB、科技→DCF+PEG等）
-3. **财务数据获取**：获取资产负债表、利润表、现金流量表
+3. **财务数据获取**：通过 Tushare 获取资产负债表、利润表、现金流量表
 4. **估值计算**：执行选定模型的估值计算
 5. **结果输出**：生成结构化估值报告
 
@@ -66,22 +66,23 @@ python scripts/calculate_valuation.py 600519 --model auto
 数据源优先级（按降级链排列）：
 
 ```
-① 问财 OpenAPI（首选，hithink-market-query / hithink-finance-query）— 官方数据，当日更新，无反爬
-② 腾讯行情 API（qt.gtimg.cn）— 行情/PE/PB/市值，无频率限制，但 GBK 编码
-③ 本地 JSON 缓存（Hermes 预拉）— 离线可用，秒级
-④ akshare 同花顺财务摘要 — 年报数据（net_profit/revenue/ROE），取最新年报非季报
-⑤ akshare 历史行情 — 兜底，本机网络不稳（频繁 Connection aborted）
-⑥ 东方财富 push2 — ⚠️ 已不可用（2026-06-11 起持续 502）
+① Tushare `income` / `balancesheet` / `cashflow` — ✅ 首选，5000积分全量可用
+② Tushare `fina_indicator` — 财务指标（ROE/毛利率/净利率），一次性取全
+③ Tushare `daily_basic` — 日估值指标（PE/PB/PS/市值/换手率）
+④ 腾讯行情 API（qt.gtimg.cn）— 行情/PE/PB/市值，无频率限制
+⑤ 本地 JSON 缓存（Hermes 预拉）— 离线可用，秒级
+⑥ 问财 OpenAPI — 备用（当日更新，无反爬）
 ```
 
-> **2026-06-17**：经三 Agent 讨论 + 实测验证，确认问财为首选、腾讯为可靠备用、akshare 作财务兜底。
-> 所有行情/名称/OHLCV 数据获取优先走问财 OpenAPI，腾讯 API 仅作备降。
+> **2026-07-02**：数据源已全面切换至 Tushare。`data_fetcher.py` 内建实时降级链：
+> ① 问财缓存 → ② 腾讯 API → ③ Tushare → ④ 兜底默认值。
 
 ### 问财 OHLCV 批量拉取
 
 详见 `references/web-app-pitfalls.md` 和 iwencai-skillhub 的 `references/iwencai-ohlcv.md`。
 
-> **2026-06-17 更新**：东方财富 push2 API 已不可用（部分网络环境阻断）。数据源全面切换到「腾讯行情 + akshare 财务」双链路，`data_fetcher.py` 内建实时降级，不再依赖 Hermes 预拉 JSON 缓存。
+> **2026-07-02 更新**：数据源已全面切换到 Tushare（`income`/`balancesheet`/`cashflow`/`fina_indicator`/`daily_basic`/`stock_basic`），
+> `data_fetcher.py` 内建实时降级链。不再依赖 Hermes 预拉 JSON 缓存作为主要财务数据源。
 
 ### 当前数据链路（data_fetcher.py）
 
@@ -90,17 +91,18 @@ python scripts/calculate_valuation.py 600519 --model auto
   ① 问财 JSON 缓存
   ② 腾讯 qt.gtimg.cn API（稳定、无反爬、无频率限制）
   ③ 东方财富 JSON 缓存（残存）
-  ④ akshare 历史行情
+  ④ Tushare daily（降级兜底）
 
 财务数据（营收/净利/ROE/负债率）:
   ① Hermes 生成的财务三表 JSON
-  ② akshare stock_financial_abstract_ths()（同花顺年报摘要）
+  ② Tushare fina_indicator + income + balancesheet（✅ 新首选）
   ③ 兜底默认值
 
 行业分类:
-  ① 问财/东方财富 JSON 缓存
-  ② akshare stock_individual_info_em()（不稳定，可能超时）
-  ③ "未知"
+  ① 问财 JSON（含 sw_l1，优先且直接）
+  ② 东方财富 industry JSON（申万二级，需 SW_LEVEL2_TO_LEVEL1 映射）
+  ③ Tushare stock_basic（industry 字段，稳定兜底）
+  ④ 返回"未知"
 ```
 
 ### 腾讯 API 格式参考
@@ -108,21 +110,28 @@ python scripts/calculate_valuation.py 600519 --model auto
 `https://qt.gtimg.cn/q=sh600519` 返回 `~` 分隔字段：
 - 字段 1: 名称, 3: 现价, 32: 涨跌幅%, 38: 换手率%, 39: PE(TTM), 44: 流通市值(亿), 45: 总市值(亿), 46: PB
 
-### akshare 财务数据注意事项
+### Tushare 财务数据注意事项
 
-- `stock_financial_abstract_ths()` 返回数据**从旧到新排序**，取最新年报需 `df[df['报告期'].str.endswith('-12-31')].iloc[-1]`
-- 金额字段带中文后缀（"万"/"亿"），需 `_parse_cn_amount()` 解析
-- 百分比字段带 "%" 后缀，需 `_parse_pct()` 解析
-- 优先取年报（-12-31 结尾），季报数据不完整不适合估值
+- 财务数据单位是**元**（与 akshare 不同，akshare 带"万/亿"后缀），无需 `_parse_cn_amount()` 转换
+- `fina_indicator` 中 ROE/毛利率/净利率是**百分比值**（15.2 表示 15.2%），需除以 100
+- 优先取年报（end_date 以 1231 结尾），季报数据不完整不适合估值
+- `daily_basic` 接口**1次/小时**限频（非分钟级），调用前注意确认额度
+- `stock_basic` 行业字段包含申万一级行业名称，可直接用于模型匹配
+
+### Tushare 常见调用陷阱
+
+| 陷阱 | 表现 | 修复 |
+|------|------|------|
+| **限频429** | 连续API调用过快被Tushare拒绝 | 每次调用间加 `time.sleep(1.1)`，5000积分限频500次/分钟 |
+| **北交所后缀** | 8xxxxx/4xxxxx 被映射成 .SZ 返回空数据 | `_ts_code()` 中先判断前2位：`startswith(('8','4'))` → .BJ |
+| **period不筛选年报** | annual分支不过滤end_date=1231，拿到混合报告期 | 加 `df[df['end_date'].astype(str).str.endswith('1231')]` |
+| **fina_indicator上限** | 单次最多100条，多年数据被截断 | 按年分多次请求，或加注释标注限制 |
+| **派生ROE覆盖官方ROE** | 自己算的ROE覆盖了Tushare返回的 fina_indicator.roe | 优先用官方值，仅当为None时才用派生值 |
+| **行业一级vs二级混淆** | Tushare返回申万一级名（食品饮料），而降级链可能返回二级名（白酒Ⅱ） | 映射字典中为每个一级行业加上自映射 |
 
 ### 已知坑点
 
 - **东财 push2 不可用**（2026-06-11 验证）：部分网络环境阻断，不要依赖 push2 数据源
-- **问财 OpenAPI 返回的字段名是中文 key**（如 `最新市盈率ttm`、`总市值[20260616]`），不是英文
-- **akshare 财务数据排序**：`stock_financial_abstract_ths()` 返回从旧到新，取最新要用 `df.iloc[-1]`（不是 `df.iloc[0]`），且应优先取年报（`报告期` 以 `-12-31` 结尾）
-- **akshare 金额字段带中文后缀**：`1845.27万`、`1.57亿`，必须用 `_parse_cn_amount()` 解析
-### 已知坑点
-
 - 问财 OpenAPI 返回的字段名是**中文 key**（如 `最新市盈率ttm`、`总市值[20260616]`），不是英文，取值时注意 key 匹配
 - 问财 API 响应数据在 **`datas`** 键下（复数），不是 `data`。股票代码带 `.SZ`/`.SH` 后缀需剥离
 - 同花顺行业字段 `所属同花顺行业` 是三级数组 `["一级","二级","三级"]`
@@ -131,14 +140,13 @@ python scripts/calculate_valuation.py 600519 --model auto
 - 报价接口（`push2`）不稳定，特定股票可能被"拉黑"（持续 502），直接降级到搜狐
 - 行业接口（`push2` fields=f127,f128,f129）**不可用**，改用申万分类多源验证
 - 搜狐备用：`https://q.stock.sohu.com/cn/{CODE}/index.shtml`，一次拿到 PE/市值/EV/ROE 等全套
-- Tushare 限频：`stock_basic` 1次/分钟，`daily_basic` **1次/小时**（非分钟！）
-- akshare `stock_financial_abstract_ths()` **从旧到新排序**，取最新用 `df.iloc[-1]`；最新行可能是季报，估值需年报行（`报告期` 以 `-12-31` 结尾）
-- akshare 金额字段带**中文后缀**（`万`/`亿`），需 `_parse_cn_amount()` 解析；ROE/负债率为百分比字符串，需 `_parse_pct()`
-- akshare 在本机网络环境频繁 `Connection aborted. RemoteDisconnected`，批量查询时需容忍失败
+- **Tushare 限频**：`stock_basic` 1次/分钟，`daily_basic` **1次/小时**（非分钟！）—— 调用前务必确认额度
+- `data_fetcher.py` 保留了 `_parse_cn_amount()` 和 `_parse_pct()` 函数，用于处理**历史 JSON 缓存**中可能包含的中文后缀字段；新数据来自 Tushare（纯数字元单位）无需这些转换
 - 原始数据统一缓存到 `data/` 目录
 - **不要反复重试同一工具/同一参数**：502 意味着该股票路由到了故障后端，换数据源比换工具更有效
 - **行业分类不走 push2 的 f127/f128/f129**：该接口已确认不可靠，直接用申万分类体系
-- **Tushare `daily_basic` 是 1次/小时**（非分钟），调用前务必确认额度
+
+> **Tushare 财务数据搭建细节见** `references/tushare-financial-fetching.md`（限频退避、年报过滤、北交所后缀、ROE优先级等已验证模式）
 
 ## 批量估值
 

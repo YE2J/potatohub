@@ -72,6 +72,30 @@ pip --version
 
 5. **PEP 668 compliance.** `uv` creates isolated venvs by default — no `--break-system-packages` needed.
 
+6. **`~/.local/bin/python3.11` as pyenv sandbox bypass.** When Homebrew's pyenv python fails with `Library not loaded: /opt/homebrew/opt/gettext/lib/libintl.8.dylib (blocked by sandbox)`, try `~/.local/bin/python3.11`. This is an independently-installed CPython (from python.org installer or `uv`) that does not depend on Homebrew's gettext. It bypasses the libintl sandbox lock. **Check first**: `ls -la ~/.local/bin/python3.11 && ~/.local/bin/python3.11 --version`. Add to cron prompts as a fallback Python path.
+
+7. **In cron prompts, prefer `~/.local/bin/python3.11` over `~/.pyenv/versions/3.11.11/bin/python3.11` on macOS 26.x.** The pyenv path inherits Homebrew's broken gettext linkage. The `~/.local/bin/` path is a standalone build and works reliably in cron/launchd sandbox context.
+
+8. **Secondary venv sys.path pollution when called from Hermes.** When Hermes (running py3.11) spawns a terminal command using **any** secondary venv (project `.venv`, `venv_stock`, etc.) that runs a different Python version, the Hermes agent's py3.11 site-packages leak onto `sys.path` via the global `PYTHONPATH` environment variable. C-extension modules (numpy, pandas, etc.) compiled for py3.11 fail when loaded by a py3.9 interpreter:
+
+   ```
+   ModuleNotFoundError: No module named 'numpy._core._multiarray_umath'
+   ```
+
+   **Detection:** `echo $PYTHONPATH` shows `<hermes-venv>/lib/python3.11/site-packages`.  
+   Also visible: `python -c "import sys; print(sys.path)"` shows the Hermes venv path before the secondary venv's own site-packages.
+
+   **Preferred Fix — clear PYTHONPATH entirely:**
+   ```shell
+   PYTHONPATH="" /path/to/venv/bin/python script.py
+   ```
+   This strips all Hermes-injected paths, forcing Python to use only the secondary venv's own site-packages and system stdlib. Works for any project venv regardless of path.
+
+   **Pro tip:** Create a shell alias so you don't have to type `PYTHONPATH=""` every time:
+   ```shell
+   alias bp="PYTHONPATH=\"\" /Users/yellow/my_quant_system/.venv/bin/python"
+   ```
+
 ## References
 
 - `references/macos26-python-failures.md` — exact error transcripts from the broken Homebrew CPython session

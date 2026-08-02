@@ -135,6 +135,42 @@ python3 ths_min_convert.py "同花顺原数据/shase/min5/" --ext .mn5 --table m
 python3 ths_finance_parser.py "同花顺原数据/finance/"
 ```
 
+### Coze 自动管线 (qfq_import.sh) — 前复权增量导入
+
+这是每日 05:30 自动运行的增量导入机制，从 Coze 项目空间下载前复权日线数据。
+
+**机制：**
+
+```
+Coze 03:00 前复权同步 → 上传信号文件 + 数据文件到 Coze 项目空间
+                                              ↓
+Hermes cron 05:30 → qfq_import.sh → 下载信号文件 → 解析状态
+                                              ↓ (status=ok/partial)
+                                    下载数据文件 .csv.gz → gunzip
+                                              ↓
+                                    Python 导入 daily_kline 表
+```
+
+**信号文件** (`/data/qfq/signal_{YYYYMMDD}.json`):
+```json
+{"status":"partial","trade_date":"2026-06-29","row_count":5186,
+ "finished_at":"2026-06-30T03:01:17+08:00"}
+```
+- `status`: `ok` / `partial` → 继续导入；`failed` / `skipped` / 空 → 跳过
+- 非交易日 Coze 不推送信号，脚本静默退出
+
+**数据文件** (`/data/qfq/qfq_incremental_{YYYYMMDD}.csv.gz`):
+- CSV 列: InnerCode, TradingDay, OpenPrice, HighPrice, LowPrice, ClosePrice, TurnoverVolume, TurnoverValue
+- 按 `(stock_code, date)` 主键 `INSERT OR REPLACE`
+
+**关键脚本路径:** `~/.hermes/scripts/qfq_import.sh`
+- 使用 `/usr/bin/python3`（系统 Python 3.9）
+- coze CLI 路径: `~/.npm-global/bin/coze`
+- Coze 项目 ID: `7652507431196688676`
+- 3 次重试（指数退避 5s/10s/15s）
+
+> ⚠️ **Coze CLI exit code 陷阱**: `coze agent file download --format json` 始终返回 exit=0，文件不存在也写入错误 JSON。详见 `references/coze-cli-download-behavior.md`。
+
 ### 增量导入（新数据）
 
 ```bash
@@ -242,7 +278,7 @@ CREATE TABLE minute_kline (
 
 | 表 | 类型 | 记录数 | 证券数 |
 |---|---|---|---|
-| `daily_kline` | 日线 | 44,445 | 306 |
+| `daily_kline` | 日线 | 2,626,889 | 5,186+ |
 | `minute_kline` | 1分钟 | 243,435 | 202 |
 | `minute5_kline` | 5分钟 | 58,176 | 202 |
 | `A股营业总收入` | 营收 | 315,024 | - |
@@ -263,6 +299,8 @@ CREATE TABLE minute_kline (
 | `ths_min_convert.py` | `~/Documents/同花顺指标/` | `.min`/`.mn5` → CSV → `minute_kline`/`minute5_kline` |
 | `ths_finance_parser.py` | `~/Documents/同花顺指标/` | `.财经` → CSV → 独立财务表 |
 | `stock_data.db` | `~/my_quant_system/` | SQLite 数据库 |
+| `qfq_import.sh` | `~/.hermes/scripts/` | **Coze 前复权增量日线自动导入**（cron 05:30） |
+| `daily_moneyflow_iwencai.sh` | `~/.hermes/scripts/` | 资金流增量采集（cron 18:30） |
 
 ---
 
@@ -273,6 +311,15 @@ CREATE TABLE minute_kline (
 3. **分钟线误定位**: `find_data_start` 如果返回错误偏移，数据全是乱码。通过验证相邻记录的一致性来避免。
 4. **大文件性能**: 股本结构文件 22MB、营收文件 17MB。脚本按 500 条一批插入，内存可控。
 5. **日期格式不一致**: 旧 akshare 导入的日期是 `20221209`（无分隔符），同花顺 CSV 是 `2025-11-03`（有分隔符）。SQLite TEXT 排序两者都兼容。
+   ⚠️ **MAX(date) 排序陷阱**: `-` (ASCII 45) < `0` (ASCII 48)，因此 `2026-06-29` < `20260626`。`SELECT MAX(date)` 返回旧格式而非实际最新日期。应用 `DATE(date)` 或 `ORDER BY date(date)` 保证正确排序。
+
+6. **Coze CLI `--format json` 永远返回 exit=0**: `coze agent file download --format json` 无论文件是否存在都返回 exit code 0。文件不存在时写入错误 JSON `{"code":1000002,"msg":"系统错误"}`。脚本必须检查下载文件的内容是否包含 `code` 字段，不能仅靠 exit code 判断。
+
+7. **Coze 空文件上传**: Coze 任务可报告 "成功" 但上传空文件的 gzip 头（49 字节，0 行数据）。在 gunzip 和导入前必须检查文件大小（< 100 字节视为无效）。
+
+8. **信号文件级联故障**: qfq_import.sh 依赖 Coze 信号文件下载结果。信号下载失败（coze CLI 超时/token 过期/Coze 临时不可用）时整个导入被阻塞。建议加 fallback：信号失败后直接尝试下载数据文件，数据文件存在就导入。
+
+9. **手动补导入日期格式**: 从 Coze 数据文件 `qfq_incremental_*.csv.gz` 手动补导入时，日期格式为 `YYYY-MM-DD`。直接调用 `ths_import_to_db.py` 可能不兼容。用 `INSERT OR REPLACE` 写入时确保日期格式统一。
 
 ## Verification Checklist
 
@@ -281,3 +328,5 @@ CREATE TABLE minute_kline (
 - [ ] `.财经` 文件每条记录都有有效的 `stock_code`（6 位数字）
 - [ ] 增量导入时已存在的数据被正确跳过
 - [ ] `minute_kline` 不与 `daily_kline` 混表
+- [ ] **Coze 自动导入后**: 检查信号文件内容不是错误 JSON（`code` 字段），数据文件 > 100 字节
+- [ ] **日期查询**: 用 `DATE(date)` 或 `strftime`，不用 `MAX(date)`（含 `-` vs 无 `-` 格式混合）
