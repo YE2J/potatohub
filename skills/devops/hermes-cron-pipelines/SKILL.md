@@ -15,6 +15,8 @@ When:
 - The `hermes cron` CLI is blocked (macOS TCC sandbox, remote backend, etc.)
 - Building bash-based data pipelines that must work without Python
 - Debugging a cron job that involves web data sources
+- A cron job silently disappeared after a jobs.json rebuild, or setting up a scheduled backup of skills/config to GitHub → see `references/potatohub-github-backup.md`
+- Configuring `workdir` on a job, or expecting AGENTS.md project-context injection → see `references/cron-workdir-agents-md.md` (no_agent vs agent 模式差异 + 验证方法) and `references/agents-md-generation.md` (/init 等价实现)
 
 ## Key Concepts
 
@@ -731,7 +733,7 @@ echo "Default: $(jq '.jobs | length' ~/.hermes/cron/jobs.json) jobs"
 # Default jobs + all profile jobs = sidebar count
 ```
 
-**Common scenario:** If you have worker profiles (worker-xiaomi, worker-glm-mid, etc.) with cron jobs created during earlier setups, they accumulate in the sidebar count. A default profile with 22 jobs + worker-glm-mid with 2 + orchestrator with 1 = 25 in the sidebar.
+**Common scenario:** If you have worker profiles (worker-xiaomi, worker-glm, etc.) with cron jobs created during earlier setups, they accumulate in the sidebar count. A default profile with 22 jobs + worker-xiaomi with 2 + orchestrator with 1 = 25 in the sidebar.
 
 **Resolution:**
 - **To remove old cross-profile jobs**, delete the `~/.hermes/profiles/<name>/cron/jobs.json` file or remove individual entries in it

@@ -106,6 +106,24 @@ another's; `SELECT trade_date, temperature_score ... ORDER BY trade_date DESC LI
 on `market_temperature` is cheap and settles it. This is the wiki-side instance of the
 "Independent Freshness" doctrine in the SKILL.md.
 
+### 10. Morning-report content errors ≠ data gaps (verified 2026-08-07, log_id=338)
+The 07:05 morning report can print WRONG/ERROR content while the DB is perfectly fine —
+its query path can fail independently of the data. Verified: report showed 两融
+"❌ 无两融余额数据" (yet `margin_balance` HAD 08-05 rows) and 大盘温度
+"❌ 查询失败: Cannot operate on a closed database" (yet `market_temperature` HAD
+08-07 rows). When the report shows a failure, cross-check the DB directly BEFORE
+recording a gap. If DB has the data: the fix is the report-script query path
+(🟡 script bug), NOT the data pipeline (🔴). Record it as script-bug in log.md so
+the next run doesn't compound a false gap.
+
+### 11. L1/L3 engine table column traps (verified 2026-08-08)
+Guessed columns return EMPTY silently on engine tables (SQLite SELECT on a missing
+column returns no rows, not an error): `market_temperature.trend` → real
+`trend_direction` (up/down/stable); `market_temperature.position` → `position_ratio`;
+`decision_log.action` → `decision_type` (buy/sell/hold/cash/watch); `stock_name_map.ts_code`
+→ `stock_code` (PK). Run `PRAGMA table_info(<table>)` or check
+`data-wiki-maintenance/references/a-share-table-catalog.md` before composing queries.
+
 ## Reporting convention (cron delivery)
 Final response should lead with the headline finding (e.g. "W31 收官日数据全线缺失"), then a
 data-freshness table, then what was updated. Use emoji status consistently (🚀 new / ✅ ok / 🔴 fail).

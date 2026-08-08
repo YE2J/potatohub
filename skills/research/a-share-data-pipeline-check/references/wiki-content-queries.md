@@ -29,7 +29,10 @@ c.execute('''
 # pct_chg is daily return already (not close-pct change)
 ```
 
-**Format note**: `index_daily.trade_date` is `YYYYMMDD` (integer). Compare with `<` not `strftime` for speed.
+**Format note**: `index_daily.trade_date` is **`YYYY-MM-DD`** (string, verified
+2026-08-08 — `WHERE trade_date='2026-08-07'` returns 5 rows). The "YYYYMMDD"
+claim in older versions of this note was WRONG. `market_moneyflow.trade_date`
+IS `YYYYMMDD` — do not conflate the two. Compare with `>=`/`<=` string bounds.
 
 ## 2. Moneyflow Top-N with Watchlist Join
 

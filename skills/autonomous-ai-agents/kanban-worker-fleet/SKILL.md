@@ -357,6 +357,37 @@ hermes gateway status                    # Check dispatcher health
 grep kanban ~/.hermes/logs/gateway.log   # Dispatcher activity log
 ```
 
+## Skill Sync Across Profiles（2026-08 实测）
+
+**背景**：worker profile 的 skills 目录是**物理独立的**（`~/.hermes/profiles/<worker>/skills/`），default profile 新建/修改的 skill **不会自动同步**到 worker。2026-08 检查发现 worker-glm/kimi/orchestrator 缺 51 个量化类 skill（56 个量化里只有 5 个），导致 4Agent 评审量化系统时"盲评"——不知道三层架构、数据表结构、评审规范。
+
+**检查缺口**（对比 default 与各 worker 的 SKILL.md 清单）：
+```bash
+cd ~/.hermes && python3 -c "
+import os, glob
+def get_skills(base):
+    s = set()
+    for sk in glob.glob(os.path.join(base, '**', 'SKILL.md'), recursive=True):
+        s.add(os.path.relpath(os.path.dirname(sk), base))
+    return s
+default = get_skills('skills')
+for name in ['worker-glm','worker-kimi','worker-xiaomi','orchestrator']:
+    p = get_skills('profiles/'+name+'/skills')
+    miss = sorted(default - p)
+    print(name, 'total:', len(p), '| missing:', len(miss), '|', ', '.join(miss[:6]))
+"
+```
+
+**同步方案**（按需精准复制，不搞全量膨胀）：
+- **关键缺口 = 量化类（56）+ 评审规范（code-review-checklist / review-process-enhancement）**，worker 评审量化系统必须有
+- worker-xiaomi 一般已齐全（只需补评审规范 + hermes 配置类）
+- 复用脚本：`scripts/sync_worker_skills.py`（参数化复制缺失 skill 目录，含 references/scripts 附属文件）
+- 备份：同步前 `find <profile>/skills -name "SKILL.md" | sort > backups/<name>_before.txt`，同步后再存 after 对照
+
+**验证**：同步后重新对比，确认量化类 56/56、评审规范 2/2、仍缺 = 0。
+
+**注意**：以后 default 新增/修改 skill 仍不会自动传播——需要时重跑同步脚本（或考虑 cron 定期同步）。
+
 ## References
 
 - `references/kimi-cn-xiaomi-provider-quirks.md` — Kimi-CN endpoint model list, Xiaomi MiMo status-check blind spots, and setup quirks

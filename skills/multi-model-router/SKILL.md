@@ -1,10 +1,10 @@
 ---
 name: multi-model-router
-description: 多模型智能路由 v2.0：根据任务复杂度+推理等级自动选择对应 profile（7 个预配置档位），调用 router.py 决策或由 Agent 直接 delegate。
+description: 多模型智能路由 v2.0：根据任务复杂度+推理等级自动选择对应 profile（5 个预配置档位），调用 router.py 决策或由 Agent 直接 delegate。
 category: autonomous-ai-agents
 dependencies:
   scripts: [router.py]
-  profiles: [orchestrator, worker-glm, worker-glm-mid, worker-glm-high, worker-kimi, worker-kimi-mid, worker-kimi-high]
+  profiles: [orchestrator, worker-glm, worker-kimi, worker-auditor, worker-xiaomi]
 ---
 
 # 多模型智能路由 v2.0
@@ -39,7 +39,7 @@ python3 ~/.hermes/scripts/router.py --task "任务描述" --dry-run
 ### 全量验证
 并行测试所有 profile（快速确认连通性）：
 ```bash
-for p in orchestrator worker-glm worker-glm-mid worker-glm-high worker-kimi worker-kimi-mid worker-kimi-high worker-auditor worker-xiaomi; do
+for p in orchestrator worker-glm worker-kimi worker-auditor worker-xiaomi; do
   hermes chat -p "$p" -q "回复OK即可" &
 done
 wait
@@ -54,17 +54,13 @@ wait
 | `.env` vs config key 不同 | 两处 key 不一致 | 保留可用的那个 |
 | model 改了 provider 没跟着改 | 只改了模型名 | model.provider 必须匹配 providers 节 |
 
-## 模型映射（9 档）
+## 模型映射（3 类任务 × 推理回落 base）
 
 | 任务类型 | 推理等级 | Profile | 模型 | Provider |
 |---------|---------|---------|------|----------|
 | 分析/策略/研究 | low/mid/high | orchestrator | deepseek-v4-flash | deepseek |
-| 代码生成/实现 | low | worker-glm | glm-5.1 | z.ai |
-| 代码生成/实现 | mid | worker-glm-mid | glm-5.1 | z.ai |
-| 代码生成/实现 | high | worker-glm-high | glm-5.1 | z.ai |
-| 测试/代码审查 | low | worker-kimi | kimi-k2.6 | kimi-custom |
-| 测试/代码审查 | mid | worker-kimi-mid | kimi-k2.6 | kimi-custom |
-| 测试/代码审查 | high | worker-kimi-high | kimi-k2.6 | kimi-custom |
+| 代码生成/实现 | low/mid/high | worker-glm | glm-5.1 | z.ai |
+| 测试/代码审查 | low/mid/high | worker-kimi | kimi-k2.6 | kimi-custom |
 | 审计/交叉验证/深度分析 | low/mid/high | worker-auditor | minimax-m2.7 | minimax |
 | 实现/快速验证/边界条件 | low/mid/high | worker-xiaomi | mimo-v2.5 | xiaomi |
 
@@ -90,7 +86,7 @@ python3 ~/.hermes/scripts/router.py "任务"
 
 **手动指定 profile：**
 ```bash
-python3 ~/.hermes/scripts/router.py --task "任务" --profile worker-kimi-high
+python3 ~/.hermes/scripts/router.py --task "任务" --profile worker-kimi
 ```
 
 **列出所有可用档位：**
@@ -114,7 +110,7 @@ python3 ~/.hermes/scripts/router.py --list-profiles
 
 ```bash
 # 同时启动 9 个 profile 测试
-for p in orchestrator worker-glm worker-glm-mid worker-glm-high worker-kimi worker-kimi-mid worker-kimi-high worker-auditor worker-xiaomi; do
+for p in orchestrator worker-glm worker-kimi worker-auditor worker-xiaomi; do
   hermes chat -p "$p" -q "回复OK即可，不要多余内容" &
 done
 wait

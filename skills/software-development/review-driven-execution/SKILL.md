@@ -183,7 +183,7 @@ python ~/my_quant_system/scripts/kanban_await.py t_glm t_kimi t_auditor --timeou
 |--------|------|:--------:|
 | `worker-glm` | GLM-5.2 | ~3-5min |
 | `worker-kimi` | Kimi K2.7-code | ~6-10min（已知不稳定）|
-| `worker-auditor` | MiniMax M3 | ~5-8min |
+| `worker-auditor` | MiniMax M2.7 | ~5-8min |
 | `orchestrator` | DeepSeek V4 Flash | ~30-60s |
 
 `--timeout` 建议设为 900s（15分钟），覆盖最慢情况。
@@ -229,7 +229,7 @@ STEP 7: 闭环，推进下一步
 |------|---------|------|---------|--------|
 | 🏗 **架构/可维护性** | `worker-glm` | GLM-5.2 | 代码结构、复用性、命名、模块边界、文件大小 | 重复代码、函数过长、import 规范 |
 | 🔬 **逻辑/正确性** | `worker-kimi` | Kimi K2.7-code | 逻辑正确性、边界条件、测试覆盖 | off-by-one、空值处理、数据类型兼容 |
-| ⚡ **性能/安全** | `worker-auditor` | MiniMax M3 | SQL 性能、内存使用、安全风险、异常处理 | N+1查询、索引失效、静默吞异常 |
+| ⚡ **性能/安全** | `worker-auditor` | MiniMax M2.7 | SQL 性能、内存使用、安全风险、异常处理 | N+1查询、索引失效、静默吞异常 |
 | 👤 **汇总** | `orchestrator` | DeepSeek Flash | 整合 3 份评审，分类修复优先级 | 矛盾点仲裁、遗漏补充 |
 
 ### Kanban 派发代码（正确的无 parents 模式）

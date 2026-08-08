@@ -68,6 +68,61 @@ Try common branches in order: `main`, `master`, check GitHub page for `refInfo.n
 - **GitHub Search API** unauthenticated rate limit is ~10 req/min, 60 req/hr. For heavy discovery paginate with `&page=N`; for README content use raw.githubusercontent.com instead.
 - **Empty README** — fall back to GitHub HTML page's `<meta name="description">` tag or Chinese `README.zh.md` variants.
 
+## Evaluating Third-Party Agent Skills (Skills Hub & GitHub Collections)
+
+Use when the user points at a **skill collection repo** (high-star `awesome-*`, `agentic-*`, `anthropics/skills`, etc.) or asks "这个 skills 库适合我吗".
+
+### Step 1: Probe the Skills Hub CLI FIRST (works even when web/GitHub are down)
+
+The Hermes Skills Hub CLI is a local, network-independent path that aggregates **~88K skills** from three sources: `official` (Nous), `clawhub` (OpenClaw community), and `skills.sh` (an index of GitHub skill repos). Verified working 2026-08 even when web_search and GitHub API both failed:
+
+```bash
+hermes skills search <keyword>      # e.g. repo name, topic, partial name ("awesome", "agentic")
+hermes skills browse                # full catalog (page 1/4400)
+hermes skills inspect <identifier>  # preview a skill WITHOUT installing
+hermes skills install <id-or-url>   # install (hub id OR direct https://.../SKILL.md)
+hermes skills tap add <repo>        # add an entire GitHub repo as skill source
+hermes skills check / update        # refresh outdated hub skills
+```
+
+**Key facts:** because skills.sh indexes GitHub repos, `hermes skills search <collection-repo-name>` often reveals whether a GitHub collection is already in the Hub (partial names work, e.g. "quant" surfaced `antigravity-awesome-skills` entries). If the exact repo is NOT indexed (0 results), the collection is likely too new/long-tail — decide whether it's worth fetching by another path.
+
+### Step 2: Suitability framework for skill collections
+
+| Check | Question | Typical result for this user |
+|-------|----------|------------------------------|
+| 定位错位 | Is it general-purpose while the user's need is vertical? | Collections target EN/dev crowd; A-share/THS/TDX/Chinese-ecosystem coverage ≈ 0 |
+| 重复度 | Compare against `skills_list` — already-covered classes | Office/doc/dev/quant classes already covered by self-built skills |
+| 格式兼容 | Claude Code SKILL.md — check frontmatter + required CLIs | Many require CLIs not installed; verify before install |
+| 用法 | Reference vs install | Read as best-practice reference; scenario-driven install only, `inspect` first |
+| 预期 | How many are actually worth installing? | Expect ≤5 from any large collection, usually 0–2 |
+
+**Pitfalls**
+- NEVER batch-install a whole collection — it pollutes the local skill index and future context.
+- NEVER `tap add` a repo without `inspect`ing its skills first.
+- High-star ≠ compatible: stars measure popularity among a different audience, not fit with this user's system.
+- The user's own battle-tested skills (a-share-*) usually beat community skills for their pipeline; external skills are idea sources, not drop-in replacements.
+
+### Step 3: Install-and-verify loop — the user's keep/delete gate
+
+Evaluation does NOT end at a verdict table. For tools that pass the duplication check (incremental capability) and are low-cost to install, the expected next move is: **install → test with real content → verify → keep or delete**. Verified workflow (OfficeCLI, 2026-08):
+
+1. **Install the fastest path**: `npm install -g <pkg>` (~4s) over `brew install` (hung on index update, timed out at 300s).
+2. **Locate the binary**: `npm root -g` → this user's global is `~/.npm-global`, bin NOT on the current session PATH (already in `~/.zshrc` for new shells). Use full path `/Users/yellow/.npm-global/bin/officecli` or `export PATH="$PATH:/Users/yellow/.npm-global/bin"` in-session.
+3. **Test with REAL content — Chinese matters**: create PPT with Chinese title/body + A-share stock codes; `officecli view <file> outline` to confirm structure.
+4. **Render and SEE the result** (the core differentiator vs blind python-docx):
+   - `officecli view <file> html > out.html` → grep the Chinese text to confirm content integrity
+   - `officecli view <file> screenshot -o out.png` → then `vision_analyze` the PNG for 中文清晰度/乱码/排版/配色
+5. **Install the tool's SKILL.md into Hermes** so future sessions auto-use it:
+   ```bash
+   curl -sL <SKILL_URL> -o /tmp/skill.md   # -L follows 301 (e.g. officecli.ai/SKILL.md → cloudflare redirect)
+   mkdir -p ~/.hermes/skills/<name> && cp /tmp/skill.md ~/.hermes/skills/<name>/SKILL.md
+   ```
+   Verify frontmatter has `name:` + `description:` (Hermes-compatible standard). Note: URL-installed skills are user-owned — patch via `hermes curator adopt` if they need fixes.
+6. **Report verdict**: keep (verified) or delete (failed) — matches the user's "没用的直接删" rule. Offer to remove test artifacts or keep them for the user to inspect.
+
+**Session evidence (2026-08):** agentic-awesome-skills (44.5K★, 2003 skills, Claude Code/Codex-oriented, no finance category) → reference-only; RKiding/Awesome-finance-skills (2.7K★, alphaear-* series, akshare/yfinance duplicates user's Tushare/DC stack, alphaear-news the only incremental one) → user declined install; iOfficeAI/OfficeCLI (26K★, single binary, HTML→PNG render loop) → installed & verified. Full detail: `references/community-skill-repos-and-officecli-2026-08.md`.
+
 ## Structured Evaluation Dimensions
 
 For each project, produce a consistent assessment across these dimensions:
@@ -93,3 +148,5 @@ After evaluating all projects, produce a summary table:
 ## Reference Files
 
 - `references/fin-agent-a-share-skill-stock-datasource-financial-api-evaluation.md` — Full evaluation data from the 4-project analysis session (July 2026)
+- `references/hermes-skills-hub-and-collections.md` — Skills Hub CLI discovery path + third-party skill collection evaluation notes (verified 2026-08: Hub works when web/GitHub down, 88K skills, sources official/clawhub/skills.sh)
+- `references/community-skill-repos-and-officecli-2026-08.md` — 3-repo evaluation verdicts (agentic-awesome-skills / Awesome-finance-skills / OfficeCLI) + OfficeCLI verified install-and-test commands

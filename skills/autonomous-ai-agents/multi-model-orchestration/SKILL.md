@@ -7,6 +7,12 @@ tags: [multi-agent, routing, moa, kanban, delegation]
 
 # 多模型编排
 
+## ⚠️ 用户当前偏好（2026-08 更新）：MOA 为主
+
+用户明确：「简单任务不 delegate 和复杂任务要多agent 的描述已经很少使用了，现在更多是使用 MOA 模式」。
+SOUL.md persona 已固化：**深度分析/评审/方案讨论 → 优先 MOA（5参考+聚合器），禁止用 delegate_task 仿真多角色**。
+delegate_task 仅在需要独立执行修复/跑脚本时使用。
+
 ## 三选一决策树
 
 ```
@@ -43,9 +49,21 @@ hermes moa configure      # 交互式配置（逐个输入 provider:model，最�
 | 维度 | MOA | Kanban | delegate_task |
 |:-----|:---|:-------|:-------------|
 | 模型分配 | 配置在 moa.presets，每个槽位独立 provider:model | 每个 profile 有自己的 model/provider | **子agent继承父模型**，多模型需嵌套 profile |
+| 参与者本质 | **5个纯模型**，只收文本问题、只回文本观点 | **4个完整 Hermes Agent 进程**（独立会话/记忆/全部工具） | 子 agent 进程，继承父模型 |
+| **能否执行工具** | ❌ **参考模型不执行任何工具** — 纯讨论 | ✅ **每个 Worker 能跑 terminal/读文件/写文件/查库/执行代码** | ✅ 子 agent 有工具 |
+| 上下文 | 共享同一问题，聚合器综合 5 份回答 | 各自独立上下文，最后汇总 | 各自独立 |
+| 产物 | 一份综合观点报告（讨论/评审意见/建议） | 每个 Worker 的真实执行结果（验证过的结论/写好的文件/跑完的数据） | 执行结果 |
+| 耗时 | 快（十几秒~1分钟） | 慢（每 Worker 完整 agent 循环，5-15分钟） | 中 |
 | 多模型讨论 | ✅ **真实** — 5个不同模型并行，聚合模型仲裁 | ⚠️ 独立工作，无交叉验证 | ❌ 不可能 — 单模型模拟角色 |
 | 交互方式 | 一次 `/moa` 触发，自动完成 | 手动创建 N 张卡，`kanban_await` 等完成 | 一次 `delegate_task` 触发 |
 | 适用 | **圆桌讨论/交叉验证/仲裁** | **独立评审/各审各的** | **执行修复/跑脚本/查库** |
+
+### ⚠️ 核心决策依据：评审+验证必须 Kanban，MOA 无法替代
+
+- **MOA 参考模型没有工具**——只能给观点，不能给"已验证的执行结果"。
+- 用户的 4Agent 评审流程（GLM架构/Kimi逻辑/MiniMax安全/Xiaomi数据）**本质就是 Kanban**，因为评审硬规则要求验证证据（命令输出/行号/数据点），必须真实执行才能产出。
+- **判断口诀**：只要观点 → MOA；要"评审+真实验证证据"或"并行执行真任务"（回补数据/并行修 bug/批量回测）→ Kanban。MOA 只能讨论"怎么做"，做不了"真的做"。
+- 用户"更多用 MOA"的观察正确——最近任务偏讨论/方案评估；但 4Agent 评审场景 Kanban 仍是唯一解。orchestrator SOUL 应保留，只是按需拉起（平时不占 token）。
 
 ### MOA 配置陷阱
 
@@ -56,6 +74,8 @@ hermes moa configure      # 交互式配置（逐个输入 provider:model，最�
 | **API Key 不在全局 .env** | Kanban 正常但 MOA 报 "Provider xxx API key not found" | MOA 读全局认证池。worker profile 的 `.env` 不被 MOA 识别。需 `echo "MOONSHOT_API_KEY=$KEY" >> ~/.hermes/.env` |
 | Provider 变量名映射 | MOA 配 `moonshot:kimi-k2.6` 但找不到 `MOONSHOT_API_KEY` | 查 worker-kimi/.env 中实际变量名（如 `KIMI_CN_API_KEY`），映射到 MOA 期望的变量名 |
 | **Provider 名称写错（最常见）** | 配了 `z.ai` 或 `moonshot`，但 Hermes 根本不识别这两个名字 | 在 MOA 配置中用 `zai`(✓) 而非 `z.ai`(✗)，用 `kimi-coding-cn`(✓) 而非 `moonshot`(✗)。查 `~/.hermes/state-snapshots/*/auth.json` 确认真实 provider 名 |
+| **桌面端 `/moa` 命令：可用但补全提示偶缺失** | 桌面 App 输入 `/moa` 可能显示"没有匹配项" | ⚠️ **这是自动补全提示缺失，不是执行失败**（2026-08 实测证伪旧结论）。`/moa` 在后端注册（commands.py:162），桌面端静态命令列表（apps/desktop/src/lib/desktop-slash-commands.ts）虽无 moa 条目，但未知命令走 **extension command 路径**（isDesktopSlashExtensionCommand：不在静态列表 = 扩展命令，后端能处理就允许执行）——所以 `/moa` 一直能执行。**重启 Hermes 后"自愈"**：前端命令索引在启动时重建，重新发现后端命令后补全提示恢复。桌面端另有人口：**左下角模型名 → 模型选择器 → 选 `moa` 虚拟 provider 预设**。会话元数据 "changed to default via provider moa" 即表示已切到 MOA。**教训：静态代码里命令列表缺失 ≠ 不可用，必须先验证运行时执行路径再下结论** |
+| **`hermes config set` 嵌套键陷阱** | `hermes config set personalities.pm ...` 写到**顶层** `personalities:`（如 line 708），而原有人格池在 `agent.personalities` 下（line 30），Hermes 读不到 | 嵌套键要写完整路径 `hermes config set agent.personalities.pm ...`。设置后 grep 确认位置；错误写入用 `hermes config unset personalities.pm` 清理。另注意 config.yaml 受保护，不能直接用 patch/write_file 改，必须走 `hermes config` 命令 |
 
 ### 配置示例（5 参考模型 + 1 聚合）
 

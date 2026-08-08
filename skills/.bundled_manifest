@@ -14,6 +14,7 @@ codex:8822d280c3de7ad5827937b83afa0a88
 comfyui:3d0c7519e58bb6109736559045c10047
 computer-use:d32f1e2244ba0c0cd4ff335c639f2949
 design-md:91a8976ef5d37db2451721db9c2b93da
+document-to-action-items:f907465e394bca1e4429654d6601d050
 docx:353cd277db9bf6af2c49a7ec2258512a
 dogfood:ae6e92c2cd27c3da8a0587f089d19fe3
 evaluating-llms-harness:e2c6a625c026db59efb309b000ec13d8
@@ -25,7 +26,8 @@ github-code-review:e1060a566c0d726136dbfc7f26d1df21
 github-issues:14370e636ac58355d25066265b0919db
 github-pr-workflow:9639ca779b6cb6c5944ddfd86727ee87
 github-repo-management:878bd6f1e536fc6f8209fa13955922d8
-google-workspace:082f4e182f54053a98ef34ddbd3b94c5
+google-workspace:4c94f1d6b53b61f765a50785e1c824e7
+grounded-citations:8d2d91a1ec89c05339110ad312e2036a
 hermes-agent:18f4d5578162739663b0af42c013db3c
 hermes-agent-skill-authoring:373715126bca9172a6acd28bdd424f10
 himalaya:d215ffaa3c1aecbc68a326e45d6927c8
@@ -47,7 +49,6 @@ openhue:d7020cc1f7280d2ae82a82622654ca7f
 p5js:5f09fa1cb8494c93bc2f5bcbd34a2ead
 pdf:163277b172e537cdfa82bf719c62abe7
 plan:96b15c8e9ad8ad4b278d833cf52f6e43
-polymarket:7644c886e028c229bc8c1f54114c3170
 popular-web-designs:b3fd685e8fbcf981755609ce98a4eea9
 powerpoint:27ee456ec69cec98f19a98cfbeed4d55
 pretext:703e9cbe272ee2c13a04b2506963ea0b

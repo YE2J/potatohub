@@ -30,6 +30,24 @@
       },
       "installed_at": "2026-07-27T14:20:43.772772+00:00",
       "updated_at": "2026-07-27T14:20:43.772772+00:00"
+    },
+    "polymarket": {
+      "source": "official",
+      "identifier": "official/research/polymarket",
+      "trust_level": "builtin",
+      "scan_verdict": "backfilled",
+      "content_hash": "sha256:9d3cf3fc5173e3ea",
+      "install_path": "research/polymarket",
+      "files": [
+        "SKILL.md",
+        "references/api-endpoints.md",
+        "scripts/polymarket.py"
+      ],
+      "metadata": {
+        "backfilled_from": "optional-skills"
+      },
+      "installed_at": "2026-08-07T14:06:19.080882+00:00",
+      "updated_at": "2026-08-07T14:06:19.080882+00:00"
     }
   }
 }

@@ -30,7 +30,7 @@ This is the audit-and-fix cycle pattern, distinct from the broader review-driven
 
 | Profile | Model | 角色 |
 |---------|-------|------|
-| `worker-glm` | GLM-5.2 | 架构/代码组织 |
+| `worker-glm` | GLM-5.1 | 架构/代码组织 |
 | `worker-kimi` | Kimi K2.6 | 逻辑/边界条件 |
 | `worker-auditor` | MiniMax M2.7 | 性能/安全/运维 |
 | `worker-xiaomi` | MiMo v2.5 | 数据完整性/漏检补充 |

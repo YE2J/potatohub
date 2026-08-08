@@ -175,8 +175,8 @@ with open('/Users/yellow/.hermes/provider_models_cache.json','w') as f:
 cd ~/.hermes
 sed -i '' 's/provider: z\.ai/provider: zai/' config.yaml
 sed -i '' 's/provider: moonshot/provider: kimi-coding-cn/' config.yaml
-# 如果模型名也不存在：
-sed -i '' 's/model: glm-5.1/model: glm-5.2/' config.yaml
+# 当前标准为 glm-5.1；若需从旧版本回退：
+sed -i '' 's/model: glm-5.2/model: glm-5.1/' config.yaml
 ```
 
 修复后验证：

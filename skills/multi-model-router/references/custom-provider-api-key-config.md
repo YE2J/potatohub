@@ -6,7 +6,7 @@
 ```yaml
 model:
   provider: zai
-  default: glm-5.2
+  default: glm-5.1
   base_url: https://api.z.ai/api/paas/v4
 ```
 但调用时提示：
@@ -134,7 +134,7 @@ curl -s -w "\nHTTP %{http_code}" https://api.moonshot.cn/v1/chat/completions \
 方案 A（推荐）：删掉 profile config 中的 inline key，改用内置 provider 名
 ```bash
 # 在 profile 的 config.yaml 中
-hermes config set --profile worker-kimi-mid model.provider 'kimi-cn'
+hermes config set --profile worker-kimi model.provider 'kimi-cn'
 # 并从 providers 节中删掉 kimi-coding-cn 的 api_key 和 base_url
 ```
 
@@ -144,7 +144,7 @@ Kimi 内置 provider 名：
 
 方案 B（保留 inline key）：手动更新过期 key
 ```bash
-hermes config set --profile worker-kimi-mid providers.kimi-coding-cn.api_key '新key'
+hermes config set --profile worker-kimi providers.kimi-coding-cn.api_key '新key'
 ```
 
 ## 验证
