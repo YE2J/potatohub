@@ -6,7 +6,8 @@
 |:-----|:-----|
 | `~/.hermes/SOUL.md` | persona 灵魂文件（agent 人格/语气/流程），直接写入系统提示 |
 | `~/.hermes/config.yaml` | 主配置，**写保护**，只能 `hermes config set/get/unset` |
-| `~/.hermes/memories/MEMORY.md` | agent 持久记忆 |
+| `~/.hermes/memories/MEMORY.md` | agent 持久记忆（条目用 `§` 分隔，可 write_file 直写绕过会话内工具上限） |
+| `~/.hermes/memories/USER.md` | 用户画像（同 `§` 分隔格式） |
 | `~/.hermes/config.yaml.bak.*` | 历史备份（自动生成，勿依赖） |
 
 ## 关键 config 键
@@ -18,6 +19,8 @@
 | `agent.model` | agent 段 | `deepseek-ai/deepseek-v4-flash` | 主模型 |
 | `moa.presets.default.reference_models` | moa 段 | 5 个 provider:model | MOA 参考模型 |
 | `moa.presets.default.aggregator` | moa 段 | deepseek-v4-flash | MOA 聚合器 |
+| `memory.memory_char_limit` | memory 段 | 2200（默认）→ 4000（本机 2026-08 扩容后） | MEMORY.md 上限，无硬上限校验，真实天花板=模型上下文 |
+| `memory.user_char_limit` | memory 段 | 1375（默认）→ 2000（本机 2026-08 扩容后） | USER.md 上限 |
 
 ## 陷阱记录（2026-08-03 会话）
 

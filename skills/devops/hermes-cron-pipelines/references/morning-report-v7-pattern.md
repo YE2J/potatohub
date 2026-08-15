@@ -1,4 +1,24 @@
-# 晨报 v7 — Weekday-Aware + Simplified Weekend Reports
+# 晨报 v7/v8 — Weekday-Aware + Simplified Weekend Reports
+
+## v8.0 Updates (2026-08-09)
+
+User redefined weekend report rules. **Weekend (Sun/Mon) reports must NOT report data-pipeline problems** — Sat/Sun are non-trading days, no new data is normal, and the 07:05 report runs outside trading hours. Showing stale "采集任务⚠️" / "数据延迟" tables on weekends is noise and was explicitly corrected.
+
+| Day | v7 behavior | v8 behavior |
+|-----|-------------|-------------|
+| Sun | simplified moneyflow + margin + temperature + weekly summary + pipeline table + delay warning | **ONLY weekly summary** (`report_weekly_summary`); no moneyflow/margin/temperature modules, no pipeline table, no data-delay warning |
+| Mon | weekly top-sectors review + pipeline table | weekly top-sectors review + **NEW `report_weekly_predictions` (🔮 本周关注预测)**; no pipeline table |
+| Tue–Sat | full report | unchanged |
+
+### New module: report_weekly_predictions (Monday only)
+
+- 板块预测: `sector_moneyflow_dc` / `industry_moneyflow_dc` over last 5 trading days — cumulative net inflow + days appearing in daily TOP5 (🔥 threshold: avg ≥10亿/day AND ≥N-1 days; fall back to cumulative TOP3 if nothing hits).
+- 个股预测: `moneyflow_daily.net_mf_amt` cumulative TOP + `leader_stocks` leaders merged (dedup by name; note column = 资金流 vs 龙头·板块).
+- Easy-to-get-wrong data facts:
+  - `moneyflow_daily.date` = **YYYY-MM-DD**; `sector_moneyflow_dc.trade_date` / `industry_moneyflow_dc.trade_date` = **YYYYMMDD**; `leader_stocks.trade_date` = **YYYY-MM-DD**.
+  - `moneyflow_daily.main_net_amt` is **ALL NULL** for tushare_dc source — use `net_mf_amt`.
+  - Stock names: join `stock_name_map` (stock_code→stock_name, ~11.7k rows); `leader_stocks` carries its own `stock_name`.
+- Truncation: prediction module gets priority weight 1 in `truncate_by_modules` (kept ahead of lower modules).
 
 ## Architecture (v7.0, 2026-07-27)
 

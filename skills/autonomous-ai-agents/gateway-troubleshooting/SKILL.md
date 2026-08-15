@@ -112,6 +112,20 @@ Note: `hermes gateway restart` or `launchctl stop` may be **blocked** when runni
 hermes gateway start
 ```
 
+### Pattern 6: Weixin sends fail with "iLink sendmessage rate limited" for hours/days
+
+**Symptom:** All WeChat deliveries fail (cron `last_delivery_error` + manual `hermes send`), message: `iLink sendmessage rate limited; cooldown active for 30.0s`. May be preceded by DNS poll errors (`nodename nor servname provided`) hours earlier.
+
+**Key distinction — local circuit breaker vs server-side rejection:** The adapter has a LOCAL 30s circuit breaker (`WEIXIN_RATE_LIMIT_CIRCUIT_*`, default threshold 1 / window 30s / open 30s). If failures persist past 30s, across gateway restarts, for hours → the **iLink server itself is rejecting** (ret=-2, errmsg "prepare failed"). Gateway restart does NOT fix this.
+
+**Diagnose (see `references/ilink-rate-limit-rebind.md`):**
+1. `hermes send --list` to confirm the target id
+2. Probe iLink directly — fastest path: `python3 <skill_dir>/scripts/ilink_probe.py` (getconfig + sendmessage + getupdates with the exact adapter envelope). getconfig ret=0 (token valid) while sendmessage ret=-2 "prepare failed" → server refuses sends. Wrong request shape yields ret=-1 "invalid request" — distinguish format bugs from server rejection.
+3. Check backup accounts `~/.hermes/weixin/accounts/*@im.bot.json` — likely session-timeout (errcode=-14).
+4. Note: `ilink_health.sh` only tests DNS/TCP, can report healthy while sends are rejected.
+
+**Recovery:** Wait (historically self-recovers within hours) or re-bind via QR — `hermes gateway setup` (interactive; run in background PTY, NOT piped through `| head`). See `references/ilink-rate-limit-rebind.md` for the full request format, response-code table, and QR rebind steps.
+
 ## General Recovery Workflow
 
 When a platform stops working unexpectedly:

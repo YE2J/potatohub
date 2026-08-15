@@ -15,6 +15,8 @@ When:
 - The `hermes cron` CLI is blocked (macOS TCC sandbox, remote backend, etc.)
 - Building bash-based data pipelines that must work without Python
 - Debugging a cron job that involves web data sources
+- A cron job ran with exit 0 but the push didn't arrive (delivery failure) → see `references/morning-report-delivery-failure.md` (content survives in `~/.hermes/cron/output/<job_id>/`, cron_push_log records script exit NOT delivery, delivery_retry.sh may be unregistered)
+- A data-producing cron reports `last_status: ok` but the metric is still "failed" → check the DOWNSTREAM consumer (morning report / UI / other scripts), not just the producer; exit 0 only means the script ran, not that consumers work. Shared SQLite conn closed by one module breaking the next → see `references/morning-report-shared-connection-bug.md` (no-data branch must never `conn.close()` an externally-passed connection)
 - A cron job silently disappeared after a jobs.json rebuild, or setting up a scheduled backup of skills/config to GitHub → see `references/potatohub-github-backup.md`
 - Configuring `workdir` on a job, or expecting AGENTS.md project-context injection → see `references/cron-workdir-agents-md.md` (no_agent vs agent 模式差异 + 验证方法) and `references/agents-md-generation.md` (/init 等价实现)
 
