@@ -44,18 +44,32 @@ L3: 估值门控 + 决策融合（选个股+执行）
 | L3 | `engines/decision_fusion.py` | `check_valuation()`, `run()` | ~18.5ms/run |
 | 数据 | `scripts/daily_market_moneyflow.py` | 大盘资金流+北向资金采集 | cron 18:30 |
 
-## 估值门控阈值
+## 估值门控阈值 (L3 v1.3)
 
 **关键量纲注意：** `valuation_results.channel_position` 是 **0~100** 刻度，不是0~1！
 
-| 信号 | 条件 | 置信度 |
+**置信度 = 基础分档 + 共振修正**（buy 且 L1温度≥70 或 leader_score≥60 → 各 +5，上限 95）：
+
+| 信号 | 条件 | 基础置信度 |
 |:-----|------|:------:|
-| buy | pos ≤ 35 AND margin ≥ -20% | 80 |
-| buy (第二层) | pos ≤ 52.5 AND margin ≥ -20% | 50 |
-| sell | pos ≥ 85 OR margin < -50 | 80 |
-| sell (预警) | pos ≥ 68 | 50 |
+| buy 强 | pos ≤ 35 AND margin ≥ 0% | 85 |
+| buy 中 | pos ≤ 35 AND margin ∈ [-20%, 0) | 70 |
+| buy 弱 | pos ≤ 52.5 AND margin ≥ -20% | 55 |
+| sell 强 | pos ≥ 90 OR margin < -60 | 85 |
+| sell 中 | pos ≥ 85 OR margin < -50 | 70 |
+| sell 预警 | pos ≥ 68 | 55 |
 | hold | 其他 | 50 |
+| hold (无pos) | channel_position=None | 30 |
 | unknown | 无估值数据 | 0 (→watch) |
+
+**证伪触发器（thesis breakers）** — 借鉴投研方法论，buy 信号生成时绑定 3 条监控条件（写入 `decision_log.thesis_breakers`，`|` 分隔）：
+1. 通道位置回升至 ≥52.5（=买入区间上界，脱离低估区）
+2. 安全边际恶化至 < -30%
+3. 所属板块热度连续 2 日下降或跌出 L2 Top5
+
+**反证（bear_case）**：buy 带价值陷阱风险提示；sell 带撤销条件（pos 回落 <68 且 margin 转正则撤销卖出）。写入 `decision_log.bear_case`。
+
+**排序**：`sort_key = leader_score + (buy: +30 + confidence/10) / (sell: -50)` — 置信度只微调不颠覆主排序。
 
 ## 仓位映射
 

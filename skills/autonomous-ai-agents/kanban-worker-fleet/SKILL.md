@@ -34,10 +34,11 @@ Kanban Board
   │  ready tasks picked up by dispatcher
   ▼
 Workers (parallel execution)
-  ├── worker-kimi     (Kimi K2.6)            — 研究员：搜索、分析、长文档、逻辑验证
-  ├── worker-glm      (GLM-5.1)              — 工匠：代码实现、架构评审、结构化输出
-  ├── worker-auditor  (MiniMax M2.7)         — 审计师：深度审计、交叉验证、性能安全
-  └── worker-xiaomi   (MiMo v2.5)            — 实现者：代码验证、可行性与边界条件
+  ├── worker-kimi     (Kimi K2.6)              — 研究员：搜索、分析、长文档、逻辑验证
+  ├── worker-glm      (GLM-5.1)                — 工匠：代码实现、架构评审、结构化输出
+  ├── worker-auditor  (MiniMax M2.7)           — 审计师：深度审计、交叉验证、性能安全
+  ├── worker-xiaomi   (MiMo v2.5)              — 实现者：代码验证、可行性与边界条件
+  └── worker-qwen     (Qwen3.8-Max)            — 智囊：方案论证、综合分析、行业研究（2026-08-22加入）
 ```
 
 ### 4-Agent Code Review / Multi-Model Evaluation Pattern
@@ -114,8 +115,9 @@ hermes config set model.default mimo-v2.5 --profile worker-xiaomi
 hermes config set model.base_url '' --profile worker-xiaomi
 # Write SOUL.md for reviewer identity
 
-# worker-qwen and worker-nvidia were removed 2026-06-16 (per user request).
-# To re-add them, create profiles and configure as documented in git history.
+# worker-nvidia was removed 2026-06-16 (per user request).
+# worker-qwen: removed 2026-06-16, RE-ADDED 2026-08-22 (Qwen3.8-Max @ alibaba-coding-plan, 国内端点).
+# 配置: provider=alibaba-coding-plan, model=qwen3.8-max, key 在 profile .env 的 ALIBABA_CODING_PLAN_API_KEY/BASE_URL
 ```
 
 ### 4. Write SOUL.md for each worker

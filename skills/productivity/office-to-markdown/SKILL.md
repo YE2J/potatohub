@@ -1,7 +1,7 @@
 ---
 name: office-to-markdown
 description: "Use when 用户上传/要求读 Word、PDF、Excel、PPT 等文档（含自动完整分析文本+图片），或要求最省 token 读大文档。"
-version: 2.4.0
+version: 2.5.1
 author: Hermes Agent
 license: MIT
 platforms: [macos, linux, windows]
@@ -144,6 +144,20 @@ pandoc "input.docx" -o "output.md" --extract-media=./media_out --wrap=none
 4. Batch scenario: convert N docs to md first, scan outlines, then deep-read
    only the 1–2 that matter (avoids per-file head+tail truncation waste).
 
+## Batch Analysis Mode (批量分析模式, v2.5.1)
+
+用户要求"批量/全部入库" N 篇文档时，除逐篇走完整流程外，批量层增加：
+
+1. **批量缓存检查**：先对全部 N 个 md5 查缓存（`ls ~/.hermes/cache/doc_analysis/<md5>/report.md`），全部 MISS 才批量转换；避免逐篇才发现缓存命中。
+2. **统一图片决策**：批量预过滤后统计总有效图数，>10 张时**一次性 clarify 问图片策略**（全量 vision / 每篇核心图 / 不 vision），不逐篇问。2026-08-22 实测 6 篇 132 图：用户选"不 vision（文本层已含关键数据）"。
+3. **批量转换**：markitdown 逐个输出到同一 /tmp 批目录，正文质量抽查 1-2 篇即可。
+4. **批量报告素材**：用 `scripts/extract_key_sentences.py` 提取每篇含数字+领域词的关键句（研报实测：单篇可抽 156 句关键数据），再逐篇写 report。
+5. **批量入库**：doc_library 用显式文件名列表循环（勿用 shell glob——工作目录不对时 glob 不展开，实测踩坑）；book_library 批量同步脚本化（参考 book_library_sync.py 模式：目录+原文件+md+note+meta+images+INDEX 插入）。
+6. **批量 3 坑（实测踩过，勿再犯）**：
+   - for 循环内 `*.pdf` glob 在错误 cwd 不展开 → 用显式文件名列表
+   - 批量写 meta.json 时路径易错（曾把 meta 写到 report.md 路径覆盖报告）→ 每篇用变量拼路径，写完 `ls` 验证
+   - Python 多行字符串含中文引号「"」与三引号冲突 → 中文引号改用「」或写脚本文件（write_file）再执行
+
 ## Image Content Understanding + Double-Check (二次复核)
 
 Text/table conversion is lossless for native docs; but **image content needs
@@ -224,6 +238,8 @@ for i, t in enumerate(texts): print(i, repr(t))
 
 **步骤 3 — 图片分析（含 Checkpoint 即时落盘，v2.3.0）**
 有效图 ≤10 张 → 自动逐个 vision_analyze 并给出每张解读；>10 张 → 先列清单让用户挑。
+**用户明确说"全分析/全部看/都分析"时 = 授权绕过清单，直接全量分析**（2026-08-16 实测：14 张图一句话授权后 4 批并行完成）。
+**批量并行加速**：一次可并行发起 4 张 vision_analyze（同一响应多个调用），每批完成后统一写一次 checkpoint。14 张约 4 批完成，显著快于逐张串行；批粒度 checkpoint 仍满足防中断要求（最坏丢一批 ≤4 张解读）。
 **上下文注入**：每张图的 vision 提示附最近标题 + ≤500 字邻近段落文本（从转换后的 md 定位图片引用位置 `data:image` 或 `![]`，取最近的 `^#{1,4}` 标题及前 ≤500 字符；若 500 字符内无标题，退回用前一段表格行/段落），提升"这图在讲什么"的准确率。
 单图失败 → 跳过并在报告标注，**不阻塞整体**。
 **Checkpoint（防中断丢失，务必执行）**：首次写 checkpoint 前，**先确保缓存目录存在**（步骤 5 才建目录，此处必须前置）：
@@ -250,13 +266,22 @@ echo "<该图解读要点，2-4 行>" >> "$CACHE_DIR/progress.md"
 | 3 | 纯示意/流程图 | 单次 vision_analyze 即可 |
 
 **步骤 5 — 汇总 + 写缓存**
-文本解读 + 每张图解读合并为完整报告（表格优先）。分析结果写入 hash 缓存（见下章），下次上传同一文件秒回。
+文本解读 + 每张图解读合并为完整报告（表格优先）。批量/长文档用
+`scripts/extract_key_sentences.py` 提取关键数据句（含数字+领域词）作为报告素材（v2.5.1）。
+分析结果写入 hash 缓存（见下章），下次上传同一文件秒回。
+**图片融合式总结（v2.5.0，用户约定 2026-08-16）**：图片是正文观点的**数据佐证**，报告须将图表信息融入对应论述段落（观点→图表佐证），**不单独列"图片分析"章节**；每处引用标注图号（如图1/图2）。若图内含文字未覆盖的补充信息（如历史峰值、形态趋势），在对应观点段落内一并写出。report.md 末尾附「图表文件索引」表（图号↔文件名↔对应章节），与 images/ 子目录对应。
 写缓存被安全策略拦截时（write_file 报错）→ 改用 terminal heredoc 写入，或提示用户确认路径。
 
 **步骤 6 — 自动入库本地文档库（v2.3.0，用户约定 2026-08）**
 分析完成后（**新建分析 或 缓存 HIT 都要执行**），将文档归档到 `~/Documents/doc_library/`：
 - 结构：`<编号>_<类型名>/<YYYY-MM-DD>/<文件名>`（类型/日期组织，用户已确认）
 - 动作：复制原文件 + 复制同名 `.report.md`（来自缓存目录）+ **更新 `INDEX.md` 索引行**
+- **完整归档集（v2.5.0，用户约定 2026-08-16）**：归档目录包含四类文件，确保分析产物与原文档物理关联：
+  1. 原文件（如 `.pdf`/`.docx`）
+  2. md 转换文件（同名 `.md`，来自文本层转换产物，如 /tmp 下的输出）
+  3. 同名 `.report.md`（融合式分析报告，来自缓存目录）
+  4. `images/` 子目录（提取的全部图片，与 report.md 末尾「图表文件索引」表对应）
+  步骤：先 `cp` 原文件与 md 转换文件 → `mkdir -p <dir>/images && cp <图目录>/*.png <dir>/images/` → `cp` report.md。图片/md 转换产物勿只留在 /tmp（重启即丢）。
 - 类型表（新类型需与用户确认后添加）：
   | 编号 | 类型 | 适用 |
   |---|---|---|
@@ -335,6 +360,8 @@ echo "<该图解读要点，2-4 行>" >> "$CACHE_DIR/progress.md"
 - **markitdown PDF 表格切碎坑**: markitdown[pdf] 对含编号列表/表格的 PDF
   提取会把行切碎（实测 2326 词条只识别 134）。**判断 PDF 类型后，列表型
   直接 pymupdf 文本层，散文型才用 markitdown**。
+  （2026-08-22 实测：散文型中文研报 6 篇——国信量化系列——markitdown 表格
+  完好、正文完整、作者/方法/结论全提取，可直接用；封面表格噪声 grep -v 过滤）
 - **docx 图片名恒为 image1.png 等无语义名**：文件名敏感检测对 docx 无效，
   必须靠邻近文本检测（见步骤 2）。
 - **单视觉模型环境**: 复核档 2 无法双模型交叉 → 换提示词二次询问或标记人工复核，勿静默信任。
@@ -375,6 +402,11 @@ echo "<该图解读要点，2-4 行>" >> "$CACHE_DIR/progress.md"
   上下标会漏报缺漏（高数总结实测 7 处→XML 核对实为 10 处）。核对公式/符号
   缺失直接解包 document.xml 提取全部 `<w:t>` 节点（见步骤 1.5），以 XML 原文
   为准。缺漏清单宁全勿漏。
+- **PDF 封面整页图常为纯装饰（2026-08-16 实测）**: NIFD 季报 PDF 提取出的
+  `p1_x1389_2480x3508.png`（2480×3508 全页尺寸）是抽象几何设计（3 组倾斜四边形）、
+  无任何内嵌文字——标题/作者/日期全部在 PDF 文本层，vision 报"无文字"是正常的，
+  **不是坏图**。处理：封面图标「纯装饰封面，文字由文本层渲染」，不必重复 vision
+  追问；判断封面是否为装饰性，可先看文本层首页是否已含标题/作者，一致则跳过。
 
 ## Verification
 
@@ -384,5 +416,6 @@ echo "<该图解读要点，2-4 行>" >> "$CACHE_DIR/progress.md"
   `~/.hermes/hermes-agent/venv/bin/python -c "import importlib.metadata as m; print(m.version('markitdown'))"` → should be 0.1.7.
 - Optionally `grep -n "TODO\|^#" out.md | head` to sanity-check structure.
 - Cache check: `ls ~/.hermes/cache/doc_analysis/` → 应有 `<md5>/` 目录；重传同一文件应秒回 report.md。
+- 归档集检查: `ls <库目录>/` 应含 原文件 + `.md` + `.report.md` + `images/`（图数 = meta.json image_count_original，非空验证）；report.md 末尾应有「图表文件索引」表。
 - HIT 判定自检: `cat ~/.hermes/cache/doc_analysis/<md5>/meta.json | grep vision_model` 与
   `grep -A2 '^  vision:' ~/.hermes/config.yaml | grep 'model:'` 一致。

@@ -34,12 +34,13 @@ This is the audit-and-fix cycle pattern, distinct from the broader review-driven
 | `worker-kimi` | Kimi K2.6 | 逻辑/边界条件 |
 | `worker-auditor` | MiniMax M2.7 | 性能/安全/运维 |
 | `worker-xiaomi` | MiMo v2.5 | 数据完整性/漏检补充 |
+| `worker-qwen` | Qwen3.8-Max | 方案论证/综合分析/行业研究 |
 
 **然后**创建 orchestrator（DeepSeek V4 Flash）做汇总合成。
 
-总计 = 4 worker + 1 orchestrator = **5张卡 / 5个不同模型**。
+总计 = 5 worker + 1 orchestrator = **6张卡 / 6个不同模型**。
 
-> 这是用户反复强调的要求（跨多个对话），不能只派3个worker。忘记包含 `worker-xiaomi` 是已被纠正过的错误。
+> 这是用户反复强调的要求（跨多个对话），不能只派3个worker。忘记包含 `worker-xiaomi` 是已被纠正过的错误，`worker-qwen` 于 2026-08-22 加入阵容。
 
 ## Prerequisites
 
@@ -60,14 +61,15 @@ hermes kanban create "<title>" --assignee worker-glm --body "..."
 hermes kanban create "<title>" --assignee worker-kimi --body "..."
 hermes kanban create "<title>" --assignee worker-auditor --body "..."
 hermes kanban create "<title>" --assignee worker-xiaomi --body "..."
-hermes kanban list                              # Wait for all 4 to reach 'done'
+hermes kanban create "<title>" --assignee worker-qwen --body "..."
+hermes kanban list                              # Wait for all 5 to reach 'done'
 
 # 自动推送（注意: kanban_await.py 只支持 --timeout 和 --interval，不支持 --extra-ticks）
 # 建议放到 terminal(background=true, notify_on_complete=true) 中运行
-cd ~/my_quant_system && python3 scripts/kanban_await.py t1 t2 t3 t4 --timeout 600
+cd ~/my_quant_system && python3 scripts/kanban_await.py t1 t2 t3 t4 t5 --timeout 600
 
 # orchestrator合成卡：不带--parent
-hermes kanban create "<title>" --assignee orchestrator --body '请汇总以下评审结果：\n1) TASK_ID_GLM (worker-glm: 架构)\n2) TASK_ID_KIMI (worker-kimi: 逻辑)\n3) TASK_ID_AUDITOR (worker-auditor: 性能安全)\n4) TASK_ID_XIAOMI (worker-xiaomi: 数据完整)\n用 kanban show 读取各卡。对 done 卡汇总，对 failed/crashed/超时todo 标记【不可用】。\n输出分类(🔴/🟡/🟢)和矛盾仲裁。'
+hermes kanban create "<title>" --assignee orchestrator --body '请汇总以下评审结果：\n1) TASK_ID_GLM (worker-glm: 架构)\n2) TASK_ID_KIMI (worker-kimi: 逻辑)\n3) TASK_ID_AUDITOR (worker-auditor: 性能安全)\n4) TASK_ID_XIAOMI (worker-xiaomi: 数据完整)\n5) TASK_ID_QWEN (worker-qwen: 方案论证/综合分析)\n用 kanban show 读取各卡。对 done 卡汇总，对 failed/crashed/超时todo 标记【不可用】。\n输出分类(🔴/🟡/🟢)和矛盾仲裁。'
 hermes kanban show <task_id>                    # Read handoff
 hermes kanban archive <task_id>                 # Clean up
 ```
@@ -168,9 +170,10 @@ result = terminal("hermes kanban list | grep -E 'card1|card2|card3'")
 | `worker-kimi` | Kimi K2.6 | ~5-9min | 第二快，但容易卡在 running 状态超10分钟 |
 | `worker-auditor` | MiniMax M2.7 | ~6-8min | 最慢但评审最详细 |
 | `worker-xiaomi` | MiMo v2.5 | ~4-9min | 2026-07-12新加入。通常3-5分，但复杂评审可达9分。接近600s超时时需使用 `--timeout 900` 加长超时 |
+| `worker-qwen` | Qwen3.8-Max | ~2-5min | 2026-08-22加入阵容。带原生推理，输出质量高；首调含冷启动可能偏慢 |
 | `orchestrator` | DeepSeek V4 Flash | ~30-60s | 汇总卡极快 |
 
-**典型总等待**: ~5-10分钟（3-4 worker + 1 orchestrator）
+**典型总等待**: ~5-10分钟（5 worker + 1 orchestrator）
 
 ### ⚡ 卡住检测与降级决策
 
@@ -183,7 +186,7 @@ hermes kanban show <task_id>   # 检查详细状态：实际是否在运行，�
 
 **降级决策触发条件**：
 - 已过去时间 ≥ 该 worker 最大预期时间 × 1.5
-- 且 已有 ≥ 3/4 的 worker 已完成 (done)
+- 且 已有 ≥ 4/5 的 worker 已完成 (done)
 - 或 用户主动问"卡住了吗"
 
 **降级操作**：
@@ -227,7 +230,7 @@ kanban_create(...)
 
 Read the file to review with `read_file`. Prepare the content to pass into Kanban card bodies.
 
-### 2. Create 4 Worker Cards (Parallel, Include ALL Profiles)
+### 2. Create 5 Worker Cards (Parallel, Include ALL Profiles)
 
 **评审卡 body 必须包含断言声明段和验证命令段**（详见下文模板）。
 
@@ -333,21 +336,48 @@ t4 = kanban_create(
 )["task_id"]
 ```
 
-> ⚠️ **4个worker卡，一个不能少。** 忘记 `worker-xiaomi` 是用户多次纠正过的。
+# ⚠️ 必须包含qwen（2026-08-22加入阵容，用户要求）
+t5 = kanban_create(
+    title="【代码评审-方案论证】文件名",
+    assignee="worker-qwen",
+    body=f"""请先加载检查清单：`skill_view(name='code-review-checklist')`
 
-### Step 3: 等待完成后直接输出原始 4 份报告（停止假汇总）
+--- 断言声明 ---
+• 方案假设: [例如"该设计满足当前需求且可扩展"]
+• 论证假设: [例如"模块间依赖方向正确"]
+• 一致性假设: [例如"方案与现有架构/数据流兼容"]
 
-> ⛔ **已停掉"无矛盾检测的汇总"步骤。** 当前策略：所有 worker 完成后，直接输出 4 份原始评审报告，不做汇总拼接。等阶段二（③ Orchestrator 断言对齐）上线后再恢复有意义的汇总。
+--- 验证命令（至少执行 2 条，覆盖不同维度）---
+- [ ] ls <path> 确认文件存在（路径）
+- [ ] PRAGMA table_info(xxx) 确认列类型（类型）
+- [ ] SELECT typeof(col) FROM xxx LIMIT 1（类型）
+
+--- 评审正文 ---
+评审以下代码的整体方案论证：设计是否最优、跨维度整合是否有矛盾遗漏、是否有更优替代方案：
+
+```python
+{code_content}
+```
+"""
+)["task_id"]
+```
+
+> ⚠️ **5个worker卡，一个不能少。** 忘记 `worker-xiaomi` 是用户多次纠正过的；`worker-qwen` 于 2026-08-22 加入阵容。
+
+### Step 3: 等待完成后直接输出原始 5 份报告（停止假汇总）
+
+> ⛔ **已停掉"无矛盾检测的汇总"步骤。** 当前策略：所有 worker 完成后，直接输出 5 份原始评审报告，不做汇总拼接。等阶段二（③ Orchestrator 断言对齐）上线后再恢复有意义的汇总。
 
 ```python
 # Step 3a: 等待所有 worker 完成
-cd ~/my_quant_system && python3 scripts/kanban_await.py t1 t2 t3 t4 --timeout 600
+cd ~/my_quant_system && python3 scripts/kanban_await.py t1 t2 t3 t4 t5 --timeout 600
 
-# Step 3b: 读取 4 份原始报告
+# Step 3b: 读取 5 份原始报告
 hermes kanban show t1
 hermes kanban show t2
 hermes kanban show t3
 hermes kanban show t4
+hermes kanban show t5
 ```
 
 ### 4. 自动推送结果（使用 kanban_await.py） ⭐ 默认路径
@@ -357,7 +387,7 @@ hermes kanban show t4
 ```bash
 # 注意：kanban_await.py 只支持 --timeout 和 --interval，不支持 --extra-ticks 或 --background
 # 推荐做法：打开 terminal(background=true, notify_on_complete=true) 运行
-cd ~/my_quant_system && python3 scripts/kanban_await.py t1 t2 t3 t4 --timeout 600
+cd ~/my_quant_system && python3 scripts/kanban_await.py t1 t2 t3 t4 t5 --timeout 600
 ```
 
 **验证状态**: ✅ 已在 2026-07-11 的2轮评审中实测通过（GLM+Kimi+MiniMax 3张卡，458秒自动推送完成）
@@ -426,7 +456,7 @@ Workers can crash or timeout at runtime. The system handles this in layers:
 - **Gateway 故障**: 创建卡后长时间（>2分钟）所有卡状态为 `todo`，先运行 `hermes gateway status` 检查 gateway 是否存活。如果挂了，`hermes gateway run --replace` 重启。
 - **时序竞态**: 无 parents 模式后，orchestrator 被立即派发。如果此时 worker 还没完成，orchestrator 读到的是 todo。**必须在 orchestrator body 中写明轮询逻辑**：`读取t1/t2/t3，如有任一为todo/blocked，等120秒后重读，最长等5分钟。超过的标记为[worker不可用]。`
 - **Kimi 连续失败**: Kimi K2.6 已知不稳定（~2/9 crash率）。重试2次后仍失败：建议切换为其他 worker 代审逻辑维度，或用 terminal 直调 Kimi API 做补充。
-- **Kimi 卡在 running 状态（不 crash 也不完成）**: 与 crash 不同，Kimi 可能显示 "running" 长达 10+ 分钟而无任何输出。这比 crash 更难检测——因为系统不会自动重试（未到 failure_limit）。**处理方式**：如果已有 ≥3/4 的 worker done 且 Kimi 超预期时间仍 running，直接跳过它，用其余 3 家结论汇总。不等了。
+- **Kimi 卡在 running 状态（不 crash 也不完成）**: 与 crash 不同，Kimi 可能显示 "running" 长达 10+ 分钟而无任何输出。这比 crash 更难检测——因为系统不会自动重试（未到 failure_limit）。**处理方式**：如果已有 ≥4/5 的 worker done 且 Kimi 超预期时间仍 running，直接跳过它，用其余 4 家结论汇总。不等了。
 - **多 worker 同时失败**: 如果 3 个 worker 中 ≥2 个失败，orchestrator 只有 1 份结果，合成质量严重下降。建议告知用户后重试整个周期。
 - **Worker-glm "needs_input" blocking**: worker-glm 完成时可能状态为 `blocked(needs_input)` 而非 `done`。修复：`kanban complete <task_id> --summary "Reviewed, accepted"`
 - **no auto-notify**: `kanban_complete` 的摘要不会自动推送到默认 profile 的会话。必须手动 `kanban_show`。

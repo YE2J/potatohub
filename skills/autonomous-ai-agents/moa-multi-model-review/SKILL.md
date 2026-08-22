@@ -80,6 +80,7 @@ fanout: per_iteration          # 派发模式
 | **API Key 不在全局 .env** | Kanban 正常但 MOA 报错 `Provider API key not found` | MOA 读全局认证池，worker profile 的 `.env` 不被 MOA 识别。需把 key 映射到全局 |
 | **变量名不匹配** | 配 `moonshot:kimi-k2.6` 但系统找不到 `MOONSHOT_API_KEY` | 查 `worker-kimi/.env` 实际变量名（如 `KIMI_CN_API_KEY`），映射到 MOA 期望的变量名 |
 | **config.yaml 边界错位** | moa 段后缺换行导致 `fanout: per_iterationskills:` 拼在一起 | 用 `sed -i ''` 修复断行 |
+| **sed 按模型名插入误伤** | 模型名在配置其他段重复出现（如 `mimo-v2.5` 同时是 `auxiliary.vision.model` 和 moa 参考模型），`sed -i '' '/model: mimo-v2.5/a\...'` 会插入 2 处，破坏 YAML（报 `mapping values are not allowed in this context`） | 插入前 `grep -c <模型名> config.yaml` 确认唯一；不唯一时用 `sed -n '170,190p'` 查看行号后按行号定位（`sed -i '' 'N,Md'` 删除误插行）。Hermes 解析失败会自动存 `config.yaml.corrupt.<时间戳>.bak` 副本 |
 | **provider 名称写错（最常见）** | `hermes moa list` 显示正确，但实际调用时 provider 报错 | 用 `hermes doctor` 或查 `auth.json` 确认真实 provider 名，逐项比对 |
 
 ## MOA 故障诊断（当参考模型不工作时）

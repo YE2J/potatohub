@@ -39,7 +39,7 @@ python3 ~/.hermes/scripts/router.py --task "任务描述" --dry-run
 ### 全量验证
 并行测试所有 profile（快速确认连通性）：
 ```bash
-for p in orchestrator worker-glm worker-kimi worker-auditor worker-xiaomi; do
+for p in orchestrator worker-glm worker-kimi worker-auditor worker-xiaomi worker-qwen; do
   hermes chat -p "$p" -q "回复OK即可" &
 done
 wait
@@ -63,6 +63,7 @@ wait
 | 测试/代码审查 | low/mid/high | worker-kimi | kimi-k2.6 | kimi-custom |
 | 审计/交叉验证/深度分析 | low/mid/high | worker-auditor | minimax-m2.7 | minimax |
 | 实现/快速验证/边界条件 | low/mid/high | worker-xiaomi | mimo-v2.5 | xiaomi |
+| 方案论证/综合分析/行业研究 | low/mid/high | worker-qwen | qwen3.8-max | alibaba-coding-plan |
 
 ## 推理等级矩阵
 
