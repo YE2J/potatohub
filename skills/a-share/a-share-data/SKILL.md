@@ -60,6 +60,12 @@ python3 "$SKILL_DIR/scripts/fetch_sector_info.py" [参数]
 
 ## 执行流程
 
+0. **先查 Wiki（新增，2026-08-24 起）**：用户问"今天/昨日盘面、大盘温度、资金流概况、板块轮动 L2、决策 L3、估值动态、两融"等**盘面综述类**问题时，**先读** `~/.hermes/wiki/` 下的 `_latest.md` 快速定位（各约 ≤8KB）：
+   - `~/.hermes/wiki/concepts/每日盘面/_latest.md` — 最新一日行情摘要
+   - `~/.hermes/wiki/concepts/资金流追踪/_latest.md` — 最新资金流
+   - `~/.hermes/wiki/concepts/估值动态/_latest.md` — 估值/L2/L3/两融状态
+   - 定位历史某日：`search_files "YYYY-MM-DD" path="~/.hermes/wiki/concepts/每日盘面"`，或直接读 `concepts/每日盘面/YYYY-MM-DD.md`
+   - **wiki 能覆盖就基于 wiki 回答并注明"来源: wiki 每日整理"**；wiki 无该维度（如单只个股实时行情）或数据滞后超阈值时，再走下方脚本。wiki 是每日 03:30 整理的精选快照，脚本是实时/精确数据源，两者互补。
 1. 先识别用户意图：实时、历史、技术、事件、A股赴港上市时间节点、**热门行业/热门概念/行业或概念涨跌幅**、板块热力图、7×24 快讯，或「个股所属行业」。
 2. 命中下列任一表述时，**先读** `references/danginvest-api-reference.md`，再用 `fetch_danginvest.py`（勿用 `fetch_realtime.py --boards-*`）：
    - 今天/今日**热门概念**、什么概念涨得多、概念领涨/领跌

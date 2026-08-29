@@ -9,7 +9,7 @@
 |--------|------|:--------:|:----:|:----:|:--------:|------|
 | `worker-glm` | GLM-5.2 (z.ai) | ~4min | 3min | 5min | 7 | 通常最快，稳定 |
 | `worker-kimi` | Kimi K2.6 (moonshot) | ~7min | 3min | 10min | 8 (1次crash) | 最不稳定，有时超长 |
-| `worker-auditor` | MiniMax M2.7 | ~6min | 4min | 9min | 6 | 评审最详细（有SQL EXPLAIN） |
+| `worker-minimax` | MiniMax M2.7 | ~6min | 4min | 9min | 6 | 评审最详细（有SQL EXPLAIN） |
 | `worker-xiaomi` | MiMo v2.5 | ~4min | 3min | 5min | 3 | 2026-07-12启用，稳定且快 |
 | `orchestrator` | DeepSeek V4 Flash | ~35s | 27s | 50s | 6 | 汇总极快 |
 

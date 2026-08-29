@@ -36,9 +36,9 @@ Kanban Board
 Workers (parallel execution)
   ├── worker-kimi     (Kimi K2.6)              — 研究员：搜索、分析、长文档、逻辑验证
   ├── worker-glm      (GLM-5.1)                — 工匠：代码实现、架构评审、结构化输出
-  ├── worker-auditor  (MiniMax M2.7)           — 审计师：深度审计、交叉验证、性能安全
+  ├── worker-minimax  (MiniMax M2.7)           — 审计师：深度审计、交叉验证、性能安全
   ├── worker-xiaomi   (MiMo v2.5)              — 实现者：代码验证、可行性与边界条件
-  └── worker-qwen     (Qwen3.8-Max)            — 智囊：方案论证、综合分析、行业研究（2026-08-22加入）
+  └── worker-qwen     (Qwen3.7-Plus)            — 智囊：方案论证、综合分析、行业研究（2026-08-22加入）
 ```
 
 ### 4-Agent Code Review / Multi-Model Evaluation Pattern
@@ -101,10 +101,10 @@ hermes config set model.base_url https://api.moonshot.cn/v1 --profile worker-kim
 hermes config set providers.kimi-custom.base_url https://api.moonshot.cn/v1 --profile worker-kimi
 
 # MiniMax Auditor — minimax-m2.7
-hermes profile create worker-auditor --clone-from default
-hermes config set model.provider minimax --profile worker-auditor
-hermes config set model.default minimax-m2.7 --profile worker-auditor
-# Optionally write SOUL.md: cp ~/.hermes/skills/autonomous-ai-agents/minimax-auditor/SKILL.md ~/.hermes/profiles/worker-auditor/SOUL.md
+hermes profile create worker-minimax --clone-from default
+hermes config set model.provider minimax --profile worker-minimax
+hermes config set model.default minimax-m2.7 --profile worker-minimax
+# Optionally write SOUL.md: cp ~/.hermes/skills/autonomous-ai-agents/minimax-auditor/SKILL.md ~/.hermes/profiles/worker-minimax/SOUL.md
 
 # Xiaomi MiMo — mimo-v2.5
 # Plugin: hermes-agent/plugins/model-providers/xiaomi (built-in)
@@ -116,8 +116,8 @@ hermes config set model.base_url '' --profile worker-xiaomi
 # Write SOUL.md for reviewer identity
 
 # worker-nvidia was removed 2026-06-16 (per user request).
-# worker-qwen: removed 2026-06-16, RE-ADDED 2026-08-22 (Qwen3.8-Max @ alibaba-coding-plan, 国内端点).
-# 配置: provider=alibaba-coding-plan, model=qwen3.8-max, key 在 profile .env 的 ALIBABA_CODING_PLAN_API_KEY/BASE_URL
+# worker-qwen: removed 2026-06-16, RE-ADDED 2026-08-22 (Qwen3.7-Plus @ alibaba-coding-plan, 国内端点).
+# 配置: provider=alibaba-coding-plan, model=qwen3.7-plus, key 在 profile .env 的 ALIBABA_CODING_PLAN_API_KEY/BASE_URL
 ```
 
 ### 4. Write SOUL.md for each worker
@@ -172,7 +172,7 @@ hermes gateway status
 
 ```bash
 # Test each worker individually (parallel loops on macOS are unreliable — no `timeout` command, and shell backgrounding can cause timeouts)
-for p in worker-glm worker-kimi worker-auditor worker-xiaomi; do
+for p in worker-glm worker-kimi worker-minimax worker-xiaomi; do
   echo "=== $p ===\n$(hermes -p "$p" chat -q "只回OK" 2>&1 | tail -3)"
   echo ""
 done
@@ -330,6 +330,36 @@ curl -s https://api.moonshot.cn/v1/chat/completions \
 ```
 A valid response (non-401) confirms the key works.
 
+### Profile 删除被桌面端 scheduler 复活（2026-08-27 实测 P0）
+
+`hermes profile delete <name>` 输出 "✓ Removed" 后，**桌面端（Electron）主进程持有启动时固化的 profile 列表**（`hermes_cli/profiles.py` 的 `profiles_to_serve` 在 web_server 启动时做一次目录扫描），之后每 tick（约 1 分钟）自动重建缺失 profile 目录（SOUL.md/sessions/memories/cron/executions.db 完整骨架）。实测删除后 ~40s 目录复活，`hermes profile list` 重新显示该 profile。**gateway restart 无效**（重建源是桌面 web_server 的 Desktop cron scheduler，不是 gateway）。
+
+**止血方案（占位文件）**：
+```bash
+rm -rf ~/.hermes/profiles/worker-auditor/ && touch ~/.hermes/profiles/worker-auditor && chmod 600 ~/.hermes/profiles/worker-auditor
+```
+同名 0 字节文件会骗过 `profiles_to_serve` 的 `if not entry.is_dir(): continue`（文件被跳过），scheduler 不再 tick、不再重建。90s 实测稳定。
+
+**终解**：重启桌面 app（重扫 profile 列表）后删除占位文件。占位文件在桌面端重启前都有效；重启后必须手动清理。
+
+**纪律（铁律）**：删除类操作后必须等 **1-2 个 scheduler tick 周期（~90s）复查**目录是否复活，不能只看即时状态（`profile list`/`ls` 即时通过≠删除成功）。
+
+### Profile 废弃/重命名时的 kanban.db 全量迁移清单
+
+只改 `tasks.assignee` 不够——worker 评审卡的历史事件散落在多个表，漏一处就留下新旧混用：
+
+| 对象 | 操作 | 坑 |
+|---|---|---|
+| `tasks.assignee` | `UPDATE ... WHERE assignee='旧名'` | 主迁移，最简单 |
+| `task_events.payload` | `UPDATE SET payload=REPLACE(payload,'旧名','新名')` | **JSON 内嵌 assignee，本会话实测 41 条漏迁** |
+| `tasks.body/title/result` | `REPLACE(...)` 文本替换 | 历史卡正文可留作背景（评审卡 body 属预期引用），但 assignee 字段必须干净 |
+| 备份 | 迁移**前** `cp kanban.db backups/` | 本次教训：备份落在 assignee 迁移后、文本替换前，归属不可回滚 |
+
+### Worker 行为两个易误判状态（2026-08-28 实测）
+
+1. **Worker 完成但详细报告未落盘**：status=done、summary 有结论，但 `result` 为空、无附件（本次 worker-qwen 全丢只剩一句话）。读取顺序：`kanban show <id>` 看 summary → result 空则查 `~/.hermes/kanban/workspaces/<id>/` 与 `attachments/<id>/`（MiniMax 的报告在 workspaces 下）→ 都没有只能靠 summary 或重跑。**预防**：评审卡 body 明确要求"完整报告写入附件（REVIEW_REPORT.md）或 result，不要只写 summary"。
+2. **status=blocked ≠ 超时卡死**：超过 `--timeout` 后卡可能是 `blocked`——worker **主动 kanban_block**（常因发现 P0 需人工确认而停下），不是故障。处理：`kanban show` 读 summary 与工作区报告（内容通常已完整），然后 `kanban complete <id> --summary "已读取结论"` 补完成 + `archive`，别当死卡丢弃。
+
 ### 60s dispatch interval latency
 
 The gateway dispatcher runs on a `dispatch_interval_seconds` cycle (default 60s). New `ready` cards are not picked up immediately — they wait for the next tick. Combined with worker execution time (~1-3min), total round-trip for a 3-worker + synthesis workflow is ~3-5 minutes. Not suitable for quick iteration.
@@ -347,6 +377,33 @@ The orchestrator profile needs `kanban` in its `platform_toolsets.cli` list to c
 ```bash
 hermes config set platform_toolsets.cli '["browser","clarify","code_execution","computer_use","cronjob","delegation","file","image_gen","kanban","memory","messaging","session_search","skills","terminal","todo","tts","video","vision","web"]' --profile orchestrator
 ```
+
+## Kanban 编排设置（Orchestration UI / config.yaml kanban 段）填写（2026-08-28 实测）
+
+桌面端看板 → 编排设置页有 3 个下拉/开关 + 每个 profile 一行「说明」。**说明文字存储位置是 `profiles/<name>/profile.yaml`（default 是 `~/.hermes/profile.yaml`）的 `description` 字段——不是 config.yaml**。UI「保存」最终写入这里，因此**直接编辑 profile.yaml 的 description = 等效点 UI 保存**（renderer 从后端读）。
+
+### 三个编排项语义（源码核实）
+
+| 项 | 语义 | 建议 |
+|---|---|---|
+| `orchestrator_profile` | **仅**决定 auto-decompose fan-out 后根任务归属（`kanban_decompose.py::_resolve_orchestrator_profile`），**不**把该 profile 的 SOUL/skills 加载进分解调用 | 有 orchestrator 则保持 `orchestrator`；空=回退 default |
+| `default_assignee` | 空 = 自动回退 default profile（兜底归主会话）；填 worker 会让它承接不属于自己的兜底职责 | **保持空（默认）**——主会话 description 即"兜底接盘"，语义一致；手动派卡流程此兜底几乎不触发 |
+| `auto_decompose` | 仅 triage 列任务触发；手动 `kanban create` 指定 assignee 的卡不经过 triage | 手动派卡模式可保持 true（无害）或 false（省辅助 token） |
+
+**真正的分解质量旋钮是 `auxiliary.kanban_decomposer`（provider/model）**——默认 `provider: auto, model: ''` 解析不稳定，建议显式指定（如 `deepseek` + `deepseek-v4-flash`）。`failure_limit` 建议 `3`（kimi 常超时/沙箱失败，2 偏紧）。
+
+### description 填写规则（用户偏好，2026-08-28 确认）
+
+1. **用中文**（任务描述是中文 → 路由语义对齐；5 个 worker 全是中文原生强模型，英文无优势）
+2. **不要称呼前缀**——不写"工匠（GLM-5.1）："、"卷王（Kimi K2.6）："这类角色名+模型名，**只写能力动词描述**（用户明确："没有这个必要"）
+3. 格式统一：`能力1、能力2、能力3；约束/特有能力`，全部 ≤70 字
+4. 手写后 `description_auto: false` 是受保护文本
+
+### ⚠ UI「自动」按钮陷阱（2026-08-28 实测 P1）
+
+每行右侧「自动」按钮 = 调 `auxiliary.profile_describer` 用 **LLM 生成英文泛化描述**（如 "Specializes in A-share quantitative research..."），会**覆盖手写中文内容**并置 `description_auto: true`。用户误点一次即覆盖 worker-xiaomi。**手写方案填完后不要再点「自动」**；被覆盖则重写 profile.yaml 并置 `description_auto: false`。
+
+本会话最终 7 个 profile 的中文能力描述见 `references/kanban-orchestration-settings.md`。
 
 ## Common Commands
 
@@ -390,8 +447,29 @@ for name in ['worker-glm','worker-kimi','worker-xiaomi','orchestrator']:
 
 **注意**：以后 default 新增/修改 skill 仍不会自动传播——需要时重跑同步脚本（或考虑 cron 定期同步）。
 
+**⚠ 同步脚本只复制缺失目录、不更新已存在文件（2026-08-27 实测）**：如果修改的是 worker 已拥有的 skill（如本次把 kanban-parallel-review 里 Qwen3.8-Max 改成 Qwen3.7-Plus），重跑 sync 不会覆盖 worker 副本——必须对 worker 副本做**强制文本替换**：
+```bash
+cd ~/.hermes && python3 - <<'EOF'
+import os
+for profile in ['worker-glm','worker-kimi','worker-minimax','worker-xiaomi','worker-qwen','orchestrator']:
+    base = f'profiles/{profile}/skills'
+    if not os.path.isdir(base): continue
+    for root, dirs, files in os.walk(base):
+        for f in files:
+            if f.endswith('.bak'): continue
+            p = os.path.join(root, f)
+            try:
+                c = open(p, encoding='utf-8').read()
+                if '旧字符串' in c:
+                    open(p, 'w', encoding='utf-8').write(c.replace('旧字符串', '新字符串'))
+            except Exception: pass
+EOF
+```
+批量替换 profile 名/模型名后，用 `grep -r "旧名" ~/.hermes/profiles/*/skills/ | grep -v .bak` 终扫确认零残留。
+
 ## References
 
+- `references/kanban-orchestration-settings.md` — 编排设置最终方案：7 个 profile 中文能力描述、三项编排值、profile.yaml 写入脚本与陷阱
 - `references/kimi-cn-xiaomi-provider-quirks.md` — Kimi-CN endpoint model list, Xiaomi MiMo status-check blind spots, and setup quirks
 - `references/worker-souls.md` — SOUL.md templates for each worker profile
 - `references/dashscope-china-endpoint.md` — DashScope/alibaba China endpoint troubleshooting

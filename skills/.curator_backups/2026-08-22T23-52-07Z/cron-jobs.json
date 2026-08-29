@@ -2,8 +2,8 @@
   "jobs": [
     {
       "id": "82d135d6a369",
-      "name": "Wiki \u589e\u91cf\u6574\u7406",
-      "prompt": "\u8fd9\u662f\u6bcf\u65e5 LLM Wiki \u589e\u91cf\u6574\u7406\u4efb\u52a1\u3002\n\n## \u4efb\u52a1\n\u6bcf\u5929\u81ea\u52a8\u66f4\u65b0 `~/.hermes/wiki/` \u91cc\u7684 Wiki \u77e5\u8bc6\u5e93\u3002\n\n### \u6b65\u9aa4\n1. **\u5b9a\u5411**\uff1a\u8bfb\u53d6 `SCHEMA.md` \u2192 `index.md` \u2192 `log.md`\uff08\u6700\u8fd1 20 \u884c\uff09\n2. **\u6536\u96c6\u6570\u636e\u6e90**\uff1a\n   - \u6668\u62a5\u8f93\u51fa\uff1a\u627e `~/.hermes/cron/output/` \u4e0b\u6700\u65b0\u7684\u6668\u62a5 `.md` \u6587\u4ef6\uff08\u6bcf\u65e5\u6668\u62a5\u63a8\u9001\uff09\n   - Hermes \u65e5\u62a5\uff1a\u8bfb `~/.hermes/cron/output/c448b2045f93/` \u4e0b\u6700\u65b0\u8f93\u51fa\n   - \u884c\u60c5\u5feb\u7167\uff1a`~/my_quant_system/stock_data.db` \u67e5\u6700\u65b0\u65e5\u7ebf/\u8d44\u91d1\u6d41\u6570\u636e\n3. **\u66f4\u65b0 Wiki \u9875\u9762**\uff1a\n   - `\u6bcf\u65e5\u76d8\u9762.md` \u2014 \u66f4\u65b0\u884c\u60c5\u6458\u8981\uff08K\u7ebf\u65e5\u671f\u3001\u8d44\u91d1\u6d41 Top5\uff09\n   - `\u8d44\u91d1\u6d41\u8ffd\u8e2a.md` \u2014 \u66f4\u65b0\u8d44\u91d1\u6d41\u6570\u636e\uff08\u5982\u6709\u65b0\u6570\u636e\uff09\n   - `\u4f30\u503c\u52a8\u6001.md` \u2014 \u66f4\u65b0\u4f30\u503c\u72b6\u6001\uff08\u5982\u6709\u65b0\u4f30\u503c\u8fd0\u884c\uff09\n   - `Hermes/\u65e5\u62a5\u5f52\u6863.md` \u2014 \u8ffd\u52a0\u4eca\u65e5\u5f52\u6863\u6458\u8981\n4. **\u66f4\u65b0\u5bfc\u822a**\uff1a\u5237\u65b0 `index.md` \u7684\u6700\u540e\u66f4\u65b0\u65e5\u671f\n5. **\u8bb0\u5f55\u65e5\u5fd7**\uff1a\u8ffd\u52a0\u5230 `log.md`\uff0c\u683c\u5f0f `## [YYYY-MM-DD] update | Daily wiki auto-update`\n\n### \u6ce8\u610f\u4e8b\u9879\n- \u6570\u636e\u8fd8\u6ca1\u6709\u66f4\u65b0\u65f6\uff08\u5982\u5468\u672b/\u8282\u5047\u65e5\uff09\uff0c\u5728\u65e5\u5fd7\u4e2d\u6ce8\u660e\u6570\u636e\u505c\u6ede\u5929\u6570\n- \u6240\u6709\u66f4\u65b0\u53ea\u8ffd\u52a0\u4e0d\u8986\u76d6\n- \u5982\u679c\u4eca\u5929\u6ca1\u6709\u65b0\u6570\u636e\uff08\u5468\u65e5/\u5047\u671f\uff09\uff0c\u8bb0\u5f55\"\u65e0\u65b0\u6570\u636e\uff0c\u8df3\u8fc7\u66f4\u65b0\"",
+      "name": "Wiki 增量整理",
+      "prompt": "这是每日 LLM Wiki 增量整理任务。\n\n## 任务\n每天自动更新 `~/.hermes/wiki/` 里的 Wiki 知识库。\n\n### 步骤\n1. **定向**：读取 `SCHEMA.md` → `index.md` → `log.md`（最近 20 行）\n2. **收集数据源**：\n   - 晨报输出：找 `~/.hermes/cron/output/` 下最新的晨报 `.md` 文件（每日晨报推送）\n   - Hermes 日报：读 `~/.hermes/cron/output/c448b2045f93/` 下最新输出\n   - 行情快照：`~/my_quant_system/stock_data.db` 查最新日线/资金流数据\n3. **更新 Wiki 页面**：\n   - `每日盘面.md` — 更新行情摘要（K线日期、资金流 Top5）\n   - `资金流追踪.md` — 更新资金流数据（如有新数据）\n   - `估值动态.md` — 更新估值状态（如有新估值运行）\n   - `Hermes/日报归档.md` — 追加今日归档摘要\n4. **更新导航**：刷新 `index.md` 的最后更新日期\n5. **记录日志**：追加到 `log.md`，格式 `## [YYYY-MM-DD] update | Daily wiki auto-update`\n\n### 注意事项\n- 数据还没有更新时（如周末/节假日），在日志中注明数据停滞天数\n- 所有更新只追加不覆盖\n- 如果今天没有新数据（周日/假期），记录\"无新数据，跳过更新\"",
       "skills": [
         "llm-wiki"
       ],
@@ -24,15 +24,15 @@
       "schedule_display": "30 3 * * *",
       "repeat": {
         "times": null,
-        "completed": 19
+        "completed": 55
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-06-30T07:45:14.049662+08:00",
-      "next_run_at": "2026-07-19T03:30:00+08:00",
-      "last_run_at": "2026-07-18T03:35:30.189002+08:00",
+      "next_run_at": "2026-08-24T03:30:00+08:00",
+      "last_run_at": "2026-08-23T03:32:51.002630+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -46,11 +46,12 @@
       },
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "910124571b2d",
-      "name": "\u8d44\u91d1\u6d41\u5411-Tushare-DC\u589e\u91cf",
+      "name": "资金流向-Tushare-DC增量",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -70,15 +71,15 @@
       "schedule_display": "30 18 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 13
+        "completed": 38
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-01T23:35:02.949914+08:00",
-      "next_run_at": "2026-07-20T18:30:00+08:00",
-      "last_run_at": "2026-07-17T18:30:47.060337+08:00",
+      "next_run_at": "2026-08-24T18:30:00+08:00",
+      "last_run_at": "2026-08-21T18:30:04.938582+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -86,11 +87,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "0c029d10767b",
-      "name": "\u524d\u590d\u6743\u65e5\u7ebf-Tushare\u589e\u91cf",
+      "name": "前复权日线-Tushare增量",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -110,15 +112,15 @@
       "schedule_display": "0 18 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 13
+        "completed": 38
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-02T00:39:47.982679+08:00",
-      "next_run_at": "2026-07-20T18:00:00+08:00",
-      "last_run_at": "2026-07-17T18:04:32.436392+08:00",
+      "next_run_at": "2026-08-24T18:00:00+08:00",
+      "last_run_at": "2026-08-21T18:04:09.209626+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -126,11 +128,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "263ec7d6d324",
-      "name": "\u6bcf\u65e5\u56e0\u5b50\u66f4\u65b0",
+      "name": "每日因子更新",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -150,15 +153,15 @@
       "schedule_display": "0 19 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 13
+        "completed": 38
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-02T07:26:11.957893+08:00",
-      "next_run_at": "2026-07-20T19:00:00+08:00",
-      "last_run_at": "2026-07-17T19:02:01.294997+08:00",
+      "next_run_at": "2026-08-24T19:00:00+08:00",
+      "last_run_at": "2026-08-21T19:02:44.706016+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -166,11 +169,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "db18b3fced2e",
-      "name": "\u6668\u62a5\u4ea4\u4ed8\u6e05\u7406",
+      "name": "晨报交付清理",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -190,15 +194,15 @@
       "schedule_display": "0 12 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 12
+        "completed": 37
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-02T08:09:00.819346+08:00",
-      "next_run_at": "2026-07-20T12:00:00+08:00",
-      "last_run_at": "2026-07-17T12:00:37.109602+08:00",
+      "next_run_at": "2026-08-24T12:00:00+08:00",
+      "last_run_at": "2026-08-21T12:00:12.975941+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -206,11 +210,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "baab58cec144",
-      "name": "DNS\u7f13\u5b58\u66f4\u65b0",
+      "name": "DNS缓存更新",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -230,15 +235,15 @@
       "schedule_display": "0 0 * * *",
       "repeat": {
         "times": null,
-        "completed": 17
+        "completed": 52
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-02T08:09:01.831384+08:00",
-      "next_run_at": "2026-07-20T00:00:00+08:00",
-      "last_run_at": "2026-07-19T00:00:11.536869+08:00",
+      "next_run_at": "2026-08-24T00:00:00+08:00",
+      "last_run_at": "2026-08-23T00:00:11.545058+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -246,11 +251,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "cddbbd144447",
-      "name": "\u56e0\u5b50\u56de\u586b-\u6301\u7eed",
+      "name": "因子回填-持续",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -270,15 +276,15 @@
       "schedule_display": "0 20 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 12
+        "completed": 37
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-02T08:18:39.875377+08:00",
-      "next_run_at": "2026-07-20T20:00:00+08:00",
-      "last_run_at": "2026-07-17T20:00:49.461932+08:00",
+      "next_run_at": "2026-08-24T20:00:00+08:00",
+      "last_run_at": "2026-08-21T20:00:17.909940+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -286,11 +292,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "cron_log_cleanup",
-      "name": "\u63a8\u9001\u65e5\u5fd7\u6e05\u7406",
+      "name": "推送日志清理",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -314,8 +321,8 @@
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-03T09:05:27.806840+08:00",
-      "next_run_at": "2026-07-26T03:00:00+08:00",
-      "last_run_at": "2026-07-19T03:00:14.303000+08:00",
+      "next_run_at": "2026-08-30T03:00:00+08:00",
+      "last_run_at": "2026-08-23T03:00:30.827582+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -323,11 +330,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "5575f1bae80e",
-      "name": "\u6307\u6570\u65e5\u7ebf-Tushare\u589e\u91cf",
+      "name": "指数日线-Tushare增量",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -347,15 +355,15 @@
       "schedule_display": "15 18 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 11
+        "completed": 36
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-03T09:16:24.141767+08:00",
-      "next_run_at": "2026-07-20T18:15:00+08:00",
-      "last_run_at": "2026-07-17T18:15:51.313566+08:00",
+      "next_run_at": "2026-08-24T18:15:00+08:00",
+      "last_run_at": "2026-08-21T18:15:29.284951+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -369,12 +377,13 @@
       },
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "a5676ec61494",
-      "name": "\u4ea4\u6613\u65e5\u5386-Tushare\u540c\u6b65",
-      "prompt": "\u6267\u884c\u4ee5\u4e0b Python \u811a\u672c\uff0c\u4ece Tushare trade_cal API \u540c\u6b65 A\u80a1\u4ea4\u6613\u65e5\u5386\u5230 stock_data.db\uff1a\n\n1. \u8fd0\u884c\uff1a\n   cd ~/my_quant_system && ~/.pyenv/versions/3.11.11/bin/python3 -c \"\nimport sqlite3, os, time\nfrom datetime import datetime\nimport tushare as ts\n\ntoken = os.environ.get('TUSHARE_TOKEN', '')\nif not token:\n    env_file = os.path.expanduser('~/.hermes/.env.tushare')\n    if os.path.exists(env_file):\n        with open(env_file) as f:\n            for line in f:\n                line = line.strip()\n                if line.startswith('TUSHARE_TOKEN='):\n                    token = line.split('=', 1)[1].strip().strip('\\\"')\n                    break\nts.set_token(token)\npro = ts.pro_api()\n\nDB = os.path.expanduser('~/my_quant_system/stock_data.db')\nconn = sqlite3.connect(DB)\n\n# \u83b7\u53d6\u6700\u65b0\u5df2\u6709\u65e5\u671f\nlast = conn.execute('SELECT MAX(cal_date) FROM trade_cal').fetchone()[0]\nstart = last if last else '19901201'\nend = datetime.now().strftime('%Y%m%d')\n\ncount = 0\nfor ex in ['SSE', 'SZSE']:\n    df = pro.trade_cal(exchange=ex, start_date=start, end_date=end)\n    time.sleep(0.5)\n    if df is not None and not df.empty:\n        new_rows = 0\n        for _, row in df.iterrows():\n            conn.execute(\n                'INSERT OR REPLACE INTO trade_cal (exchange, cal_date, is_open, pretrade_date) VALUES (?, ?, ?, ?)',\n                (row['exchange'], row['cal_date'], row['is_open'], row.get('pretrade_date'))\n            )\n            new_rows += 1\n        conn.commit()\n        count += new_rows\nconn.close()\nprint(f'\u4ea4\u6613\u65e5\u5386\u540c\u6b65\u5b8c\u6210\uff1a\u65b0\u589e/\u66f4\u65b0 {count} \u6761\u8bb0\u5f55')\n\"\n\n2. \u6253\u5370\u7ed3\u679c\u6458\u8981\uff0c\u5305\u62ec\u6700\u65b0\u65e5\u671f\u548c\u4e0b\u4e00\u4ea4\u6613\u65e5\u4fe1\u606f\u3002",
+      "name": "交易日历-Tushare同步",
+      "prompt": "执行以下 Python 脚本，从 Tushare trade_cal API 同步 A股交易日历到 stock_data.db（每年1月1日执行，全量覆盖当年全年日历；如中途有临时调整，可实时拉取更新）：\n\n1. 运行：\n   cd ~/my_quant_system && ~/.pyenv/versions/3.11.11/bin/python3 -c \"\nimport sqlite3, os, time\nfrom datetime import datetime\nimport tushare as ts\n\ntoken = os.environ.get('TUSHARE_TOKEN', '')\nif not token:\n    env_file = os.path.expanduser('~/.hermes/.env.tushare')\n    if os.path.exists(env_file):\n        with open(env_file) as f:\n            for line in f:\n                line = line.strip()\n                if line.startswith('TUSHARE_TOKEN='):\n                    token = line.split('=', 1)[1].strip().strip('\\\"')\n                    break\nts.set_token(token)\npro = ts.pro_api()\n\nDB = os.path.expanduser('~/my_quant_system/stock_data.db')\nconn = sqlite3.connect(DB)\n\n# 全量覆盖当年（每年1月1日执行，INSERT OR REPLACE 幂等，任何历史中段缺口自动自愈）\nyear = datetime.now().year\nstart = f'{year}0101'\nend = f'{year}1231'\n\ncount = 0\ncoverage = {}\nfor ex in ['SSE', 'SZSE']:\n    df = pro.trade_cal(exchange=ex, start_date=start, end_date=end)\n    time.sleep(0.5)\n    if df is not None and not df.empty:\n        for _, row in df.iterrows():\n            conn.execute(\n                'INSERT OR REPLACE INTO trade_cal (exchange, cal_date, is_open, pretrade_date) VALUES (?, ?, ?, ?)',\n                (row['exchange'], row['cal_date'], row['is_open'], row.get('pretrade_date'))\n            )\n        conn.commit()\n        count += len(df)\n        coverage[ex] = df['cal_date'].max()\nconn.close()\nprint(f'交易日历同步完成：覆盖 {count} 条记录（当年全量）')\nfor ex, mx in sorted(coverage.items()):\n    print(f'{ex} 最新日期: {mx}')\nyear_end = f'{year}1231'\nincomplete = [ex for ex, mx in coverage.items() if mx < year_end]\nif incomplete:\n    print(f'警告: {incomplete} 当年日历未发布完整（最新 < {year_end}），如需最新交易日请实时拉取')\n\"\n\n2. 打印结果摘要，包括最新日期和下一交易日信息；若出现\"警告\"提示当年日历不全，请明确告知用户哪些交易所数据不完整。",
       "skills": [],
       "skill": null,
       "model": null,
@@ -387,33 +396,33 @@
       "context_from": null,
       "schedule": {
         "kind": "cron",
-        "expr": "0 10 * * 1",
-        "display": "0 10 * * 1"
+        "expr": "0 10 1 1 *",
+        "display": "0 10 1 1 *"
       },
-      "schedule_display": "0 10 * * 1",
+      "schedule_display": "0 10 1 1 *",
       "repeat": {
         "times": null,
-        "completed": 2
+        "completed": 9
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-04T08:55:54.202129+08:00",
-      "next_run_at": "2026-07-20T10:00:00+08:00",
-      "last_run_at": "2026-07-13T10:10:33.548648+08:00",
+      "next_run_at": "2027-01-01T10:00:00+08:00",
+      "last_run_at": "2026-08-05T22:08:47.407995+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
       "deliver": "local",
       "origin": null,
       "enabled_toolsets": null,
-      "workdir": null,
+      "workdir": "/Users/yellow/my_quant_system",
       "fire_claim": null
     },
     {
       "id": "cfb84613007b",
-      "name": "\u6da8\u505c\u6c60-FinancialAPI",
+      "name": "涨停池-FinancialAPI",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -433,15 +442,15 @@
       "schedule_display": "0 16 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 10
+        "completed": 35
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-05T00:12:29.028932+08:00",
-      "next_run_at": "2026-07-20T16:00:00+08:00",
-      "last_run_at": "2026-07-17T16:00:25.396380+08:00",
+      "next_run_at": "2026-08-24T16:00:00+08:00",
+      "last_run_at": "2026-08-21T16:00:18.685536+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -449,11 +458,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "e234625f83ff",
-      "name": "\u8fde\u677f\u5929\u68af-FinancialAPI",
+      "name": "连板天梯-FinancialAPI",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -473,15 +483,15 @@
       "schedule_display": "5 16 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 10
+        "completed": 35
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-05T00:12:30.044954+08:00",
-      "next_run_at": "2026-07-20T16:05:00+08:00",
-      "last_run_at": "2026-07-17T16:05:26.160604+08:00",
+      "next_run_at": "2026-08-24T16:05:00+08:00",
+      "last_run_at": "2026-08-21T16:05:18.750051+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -489,11 +499,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "33a1981e50d3",
-      "name": "\u4e2a\u80a1\u5f02\u52a8-FinancialAPI",
+      "name": "个股异动-FinancialAPI",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -513,15 +524,15 @@
       "schedule_display": "30 15 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 10
+        "completed": 35
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-05T00:12:31.060459+08:00",
-      "next_run_at": "2026-07-20T15:30:00+08:00",
-      "last_run_at": "2026-07-17T15:30:21.923985+08:00",
+      "next_run_at": "2026-08-24T15:30:00+08:00",
+      "last_run_at": "2026-08-21T15:30:18.436749+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -529,11 +540,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "d550bbebb2ff",
-      "name": "\u9f99\u864e\u699c-FinancialAPI",
+      "name": "龙虎榜-FinancialAPI",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -553,15 +565,15 @@
       "schedule_display": "0 17 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 10
+        "completed": 35
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-05T00:12:32.078734+08:00",
-      "next_run_at": "2026-07-20T17:00:00+08:00",
-      "last_run_at": "2026-07-17T17:00:32.783147+08:00",
+      "next_run_at": "2026-08-24T17:00:00+08:00",
+      "last_run_at": "2026-08-21T17:00:19.757310+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -569,11 +581,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "395cb3e7080b",
-      "name": "\u5e02\u573a\u70ed\u699c-FinancialAPI",
+      "name": "市场热榜-FinancialAPI",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -593,15 +606,15 @@
       "schedule_display": "0 22 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 10
+        "completed": 35
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-05T00:12:33.096303+08:00",
-      "next_run_at": "2026-07-20T22:00:00+08:00",
-      "last_run_at": "2026-07-17T22:00:10.847720+08:00",
+      "next_run_at": "2026-08-24T22:00:00+08:00",
+      "last_run_at": "2026-08-21T22:00:24.828512+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -609,12 +622,13 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
-      "id": "dc4d14272d63",
-      "name": "\u6bcf\u65e5DB\u5907\u4efd",
-      "prompt": "",
+      "id": "3cb6fbcc8dcc",
+      "name": "每日晨报采集",
+      "prompt": "这是每日晨报任务（每日 07:05 推送微信）。脚本已升级为 v7 no_agent 模式。\n\n运行 ~/.hermes/scripts/daily_morning_report_v7.sh，输出直接对 stdout。",
       "skills": [],
       "skill": null,
       "model": null,
@@ -622,48 +636,8 @@
       "provider_snapshot": null,
       "model_snapshot": null,
       "base_url": null,
-      "script": "db_backup_daily.sh",
+      "script": "daily_morning_report_v7.sh",
       "no_agent": true,
-      "context_from": null,
-      "schedule": {
-        "kind": "cron",
-        "expr": "0 3 * * *",
-        "display": "0 3 * * *"
-      },
-      "schedule_display": "0 3 * * *",
-      "repeat": {
-        "times": null,
-        "completed": 12
-      },
-      "enabled": true,
-      "state": "scheduled",
-      "paused_at": null,
-      "paused_reason": null,
-      "created_at": "2026-07-07T23:18:15.169772+08:00",
-      "next_run_at": "2026-07-20T03:00:00+08:00",
-      "last_run_at": "2026-07-19T03:02:05.951500+08:00",
-      "last_status": "ok",
-      "last_error": null,
-      "last_delivery_error": null,
-      "deliver": "local",
-      "origin": null,
-      "enabled_toolsets": null,
-      "workdir": null,
-      "fire_claim": null
-    },
-    {
-      "id": "3cb6fbcc8dcc",
-      "name": "\u6bcf\u65e5\u6668\u62a5\u91c7\u96c6",
-      "prompt": "\u8fd9\u662f\u6bcf\u65e5\u6668\u62a5\u4efb\u52a1\uff08\u6bcf\u65e5 07:05 \u63a8\u9001\u5fae\u4fe1\uff09\u3002\n\n\u8bf7\u6309\u4ee5\u4e0b\u6b65\u9aa4\u751f\u6210\u4eca\u65e5\u6668\u62a5\uff1a\n\n## \u7b2c\u4e00\u6b65\uff1a\u8fd0\u884c\u6668\u62a5\u811a\u672c\n\u8fd0\u884c `~/.pyenv/versions/3.11.11/bin/python ~/.hermes/scripts/daily_morning_report_v6.py` \u751f\u6210\u6668\u62a5\u5185\u5bb9\u3002\n\n## \u7b2c\u4e8c\u6b65\uff1a\u68c0\u67e5\u8f93\u51fa\n\u786e\u8ba4\u811a\u672c\u8f93\u51fa\u5305\u542b\u4ee5\u4e0b\u6a21\u5757\uff1a\n- \ud83d\udcb0 \u677f\u5757\u8d44\u91d1\u6d41\u5411(DC)\n- \ud83d\udccb \u6628\u65e5\u6570\u636e\u91c7\u96c6\u4efb\u52a1\n- \u2699\ufe0f \u6570\u636e\u91c7\u96c6\u72b6\u6001\n\n## \u7b2c\u4e09\u6b65\uff1a\u63a8\u9001\n\u5c06\u811a\u672c\u8f93\u51fa\u7684\u5b8c\u6574\u5185\u5bb9\u539f\u6837\u63a8\u9001\u5230\u7528\u6237\uff08\u4e0d\u52a0\u989d\u5916\u8bc4\u8bba\uff09\u3002\n\n\u6ce8\u610f\uff1a\n- \u4e0d\u8981\u4fee\u6539\u6668\u62a5\u5185\u5bb9\uff0c\u76f4\u63a5\u8f6c\u53d1\u811a\u672c\u8f93\u51fa\n- \u5982\u679c\u811a\u672c\u6267\u884c\u51fa\u9519\uff0c\u5c06\u9519\u8bef\u4fe1\u606f\u63a8\u9001\u7ed9\u7528\u6237\n- \u6668\u62a5\u5df2\u4ecev5(v5.4)\u5207\u6362\u4e3av6\uff0c\u6570\u636e\u6e90\u4ece\u540c\u82b1\u987aTHS\u6539\u4e3a\u4e1c\u65b9\u8d22\u5bccDC",
-      "skills": [],
-      "skill": null,
-      "model": null,
-      "provider": null,
-      "provider_snapshot": "deepseek",
-      "model_snapshot": "deepseek-v4-flash",
-      "base_url": null,
-      "script": null,
-      "no_agent": false,
       "context_from": null,
       "schedule": {
         "kind": "cron",
@@ -673,27 +647,28 @@
       "schedule_display": "5 7 * * *",
       "repeat": {
         "times": null,
-        "completed": 11
+        "completed": 58
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-08T07:56:52.049197+08:00",
-      "next_run_at": "2026-07-19T07:05:00+08:00",
-      "last_run_at": "2026-07-18T07:06:37.533749+08:00",
+      "next_run_at": "2026-08-24T07:05:00+08:00",
+      "last_run_at": "2026-08-23T07:05:03.728712+08:00",
       "last_status": "ok",
       "last_error": null,
-      "last_delivery_error": null,
+      "last_delivery_error": "live adapter send failed: iLink sendmessage rate limited; cooldown active for 30.0s; live adapter delivery to weixin:o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat failed: iLink sendmessage rate limited; cooldown active for 30.0s; delivery error: Weixin send failed: iLink sendmessage rate limited; cooldown active for 30.0s (target weixin:o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat)",
       "deliver": "all",
       "origin": null,
       "enabled_toolsets": null,
-      "workdir": null,
-      "fire_claim": null
+      "workdir": "/Users/yellow/my_quant_system",
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "9139d87aa0e2",
-      "name": "\u677f\u5757\u8d44\u91d1\u6d41\u5411-\u6bcf\u65e5\u589e\u91cf",
+      "name": "板块资金流向-每日增量",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -713,15 +688,15 @@
       "schedule_display": "45 18 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 7
+        "completed": 32
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-09T03:51:25.720706+08:00",
-      "next_run_at": "2026-07-20T18:45:00+08:00",
-      "last_run_at": "2026-07-17T18:45:43.613802+08:00",
+      "next_run_at": "2026-08-24T18:45:00+08:00",
+      "last_run_at": "2026-08-21T18:45:04.426664+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -729,11 +704,12 @@
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "9f318247dfd0",
-      "name": "\u5927\u76d8\u8d44\u91d1\u6d41-\u6bcf\u65e5\u589e\u91cf",
+      "name": "大盘资金流-每日增量",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -742,7 +718,7 @@
       "provider_snapshot": null,
       "model_snapshot": null,
       "base_url": null,
-      "script": "daily_market_moneyflow.py",
+      "script": "daily_market_moneyflow.sh",
       "no_agent": true,
       "context_from": null,
       "schedule": {
@@ -753,27 +729,28 @@
       "schedule_display": "30 18 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 6
+        "completed": 31
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-09T23:29:44.453830+08:00",
-      "next_run_at": "2026-07-20T18:30:00+08:00",
-      "last_run_at": "2026-07-17T18:30:43.067134+08:00",
-      "last_status": "error",
-      "last_error": "Script not found: /Users/yellow/.hermes/scripts/daily_market_moneyflow.py",
+      "next_run_at": "2026-08-24T18:30:00+08:00",
+      "last_run_at": "2026-08-21T18:30:04.738781+08:00",
+      "last_status": "ok",
+      "last_error": null,
       "last_delivery_error": null,
       "deliver": "local",
       "origin": null,
       "enabled_toolsets": null,
       "workdir": null,
-      "fire_claim": null
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "e5e967ea3aeb",
-      "name": "\u5927\u76d8\u6e29\u5ea6-\u6bcf\u65e5\u8ba1\u7b97",
+      "name": "大盘温度-每日计算",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -793,27 +770,28 @@
       "schedule_display": "0 19 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 5
+        "completed": 31
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-11T17:12:07.613722+08:00",
-      "next_run_at": "2026-07-20T19:00:00+08:00",
-      "last_run_at": "2026-07-17T19:00:43.554920+08:00",
-      "last_status": "error",
-      "last_error": "Script not found: /Users/yellow/.hermes/scripts/engines/market_temperature.py",
+      "next_run_at": "2026-08-24T19:00:00+08:00",
+      "last_run_at": "2026-08-21T19:00:04.494973+08:00",
+      "last_status": "ok",
+      "last_error": null,
       "last_delivery_error": null,
       "deliver": "local",
       "origin": null,
       "enabled_toolsets": null,
-      "workdir": null,
-      "fire_claim": null
+      "workdir": "/Users/yellow/my_quant_system",
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "62f94e3b9c5a",
-      "name": "\u677f\u5757\u8f6e\u52a8-\u6bcf\u65e5\u8ba1\u7b97",
+      "name": "板块轮动-每日计算",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -833,27 +811,28 @@
       "schedule_display": "0 20 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 5
+        "completed": 31
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-11T17:29:19.223552+08:00",
-      "next_run_at": "2026-07-20T20:00:00+08:00",
-      "last_run_at": "2026-07-17T20:00:44.525794+08:00",
-      "last_status": "error",
-      "last_error": "Script not found: /Users/yellow/.hermes/scripts/engines/sector_rotation.py",
+      "next_run_at": "2026-08-24T20:00:00+08:00",
+      "last_run_at": "2026-08-21T20:00:13.469433+08:00",
+      "last_status": "ok",
+      "last_error": null,
       "last_delivery_error": null,
       "deliver": "local",
       "origin": null,
       "enabled_toolsets": null,
-      "workdir": null,
-      "fire_claim": null
+      "workdir": "/Users/yellow/my_quant_system",
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "2b2fdbdd0953",
-      "name": "\u51b3\u7b56\u878d\u5408-\u6bcf\u65e5\u8ba1\u7b97",
+      "name": "决策融合-每日计算",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -873,27 +852,28 @@
       "schedule_display": "30 20 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 5
+        "completed": 31
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-11T17:44:50.997464+08:00",
-      "next_run_at": "2026-07-20T20:30:00+08:00",
-      "last_run_at": "2026-07-17T20:30:45.060073+08:00",
-      "last_status": "error",
-      "last_error": "Script not found: /Users/yellow/.hermes/scripts/engines/decision_fusion.py",
+      "next_run_at": "2026-08-24T20:30:00+08:00",
+      "last_run_at": "2026-08-21T20:30:15.667036+08:00",
+      "last_status": "ok",
+      "last_error": null,
       "last_delivery_error": null,
       "deliver": "local",
       "origin": null,
       "enabled_toolsets": null,
-      "workdir": null,
-      "fire_claim": null
+      "workdir": "/Users/yellow/my_quant_system",
+      "fire_claim": null,
+      "failure_streak": 0
     },
     {
       "id": "636c702ec9f1",
-      "name": "DC\u677f\u5757\u8d44\u91d1\u6d41\u5411-\u6bcf\u65e5\u589e\u91cf",
+      "name": "DC板块资金流向-每日增量",
       "prompt": "",
       "skills": [],
       "skill": null,
@@ -913,15 +893,15 @@
       "schedule_display": "50 18 * * 1-5",
       "repeat": {
         "times": null,
-        "completed": 1
+        "completed": 26
       },
       "enabled": true,
       "state": "scheduled",
       "paused_at": null,
       "paused_reason": null,
       "created_at": "2026-07-17T09:51:54.498722+08:00",
-      "next_run_at": "2026-07-20T18:50:00+08:00",
-      "last_run_at": "2026-07-17T18:50:44.039882+08:00",
+      "next_run_at": "2026-08-24T18:50:00+08:00",
+      "last_run_at": "2026-08-21T18:50:05.943538+08:00",
       "last_status": "ok",
       "last_error": null,
       "last_delivery_error": null,
@@ -935,8 +915,314 @@
       },
       "enabled_toolsets": null,
       "workdir": null,
+      "fire_claim": null,
+      "failure_streak": 0
+    },
+    {
+      "id": "7bfe1d8efccc",
+      "name": "两融余额-每日增量",
+      "prompt": "",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": null,
+      "model_snapshot": null,
+      "base_url": null,
+      "script": "daily_margin_balance.sh",
+      "no_agent": true,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "35 18 * * 1-5",
+        "display": "35 18 * * 1-5"
+      },
+      "schedule_display": "35 18 * * 1-5",
+      "repeat": {
+        "times": null,
+        "completed": 25
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-07-20T13:25:57.710286+08:00",
+      "next_run_at": "2026-08-24T18:35:00+08:00",
+      "last_run_at": "2026-08-21T18:35:09.080198+08:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": null,
+      "deliver": "origin",
+      "origin": {
+        "platform": "weixin",
+        "chat_id": "o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat",
+        "chat_name": null,
+        "thread_id": null,
+        "user_id": "o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat"
+      },
+      "enabled_toolsets": null,
+      "workdir": "/Users/yellow/my_quant_system",
+      "fire_claim": null,
+      "failure_streak": 0
+    },
+    {
+      "id": "fb7e78b98d80",
+      "name": "Downloads 30天自动归档",
+      "prompt": "Downloads 30天自动归档到外置盘（看门狗模式）",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": null,
+      "model_snapshot": null,
+      "base_url": null,
+      "script": "archive_downloads.sh",
+      "no_agent": true,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * 0",
+        "display": "0 9 * * 0"
+      },
+      "schedule_display": "0 9 * * 0",
+      "repeat": {
+        "times": null,
+        "completed": 3
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-07-27T22:10:48.134627+08:00",
+      "next_run_at": "2026-08-23T09:00:00+08:00",
+      "last_run_at": "2026-08-16T09:00:19.477050+08:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": "delivery error: Weixin send failed: iLink sendmessage rate limited; cooldown active for 30.0s (target weixin:o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat)",
+      "deliver": "all",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null,
+      "fire_claim": null
+    },
+    {
+      "id": "dd25f44abecd",
+      "name": "内置盘容量监控",
+      "prompt": "",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": null,
+      "model_snapshot": null,
+      "base_url": null,
+      "script": "disk_monitor.sh",
+      "no_agent": true,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 7 * * *",
+        "display": "0 7 * * *"
+      },
+      "schedule_display": "0 7 * * *",
+      "repeat": {
+        "times": null,
+        "completed": 26
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-07-28T22:14:42.908114+08:00",
+      "next_run_at": "2026-08-24T07:00:00+08:00",
+      "last_run_at": "2026-08-23T07:00:01.825062+08:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": null,
+      "deliver": "all",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null,
+      "fire_claim": null,
+      "failure_streak": 0
+    },
+    {
+      "id": "6aa70830f94e",
+      "name": "每月DB备份（1号凌晨3点）",
+      "prompt": "",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": null,
+      "model_snapshot": null,
+      "base_url": null,
+      "script": "db_backup_monthly.sh",
+      "no_agent": true,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 3 1 * *",
+        "display": "0 3 1 * *"
+      },
+      "schedule_display": "0 3 1 * *",
+      "repeat": {
+        "times": null,
+        "completed": 1
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-07-30T06:24:33.680172+08:00",
+      "next_run_at": "2026-09-01T03:00:00+08:00",
+      "last_run_at": "2026-08-01T03:02:43.732369+08:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": null,
+      "deliver": "all",
+      "origin": {
+        "platform": "weixin",
+        "chat_id": "o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat",
+        "chat_name": null,
+        "thread_id": null,
+        "user_id": "o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat"
+      },
+      "enabled_toolsets": null,
+      "workdir": null,
+      "fire_claim": null
+    },
+    {
+      "id": "86f14d273b14",
+      "name": "PotatoHub-Skills备份到GitHub",
+      "prompt": "每周日 00:00 自动备份 skills 到 GitHub（no_agent watchdog 模式，脚本自行处理，无变化静默）",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": null,
+      "model_snapshot": null,
+      "base_url": null,
+      "script": "potatohub_backup.sh",
+      "no_agent": true,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 0 * * 0",
+        "display": "0 0 * * 0"
+      },
+      "schedule_display": "0 0 * * 0",
+      "repeat": {
+        "times": null,
+        "completed": 3
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-08-02T12:33:21.962411+08:00",
+      "next_run_at": "2026-08-30T00:00:00+08:00",
+      "last_run_at": "2026-08-23T00:00:24.912761+08:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": "live adapter send failed: iLink sendmessage rate limited; cooldown active for 30.0s; live adapter delivery to weixin:o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat failed: iLink sendmessage rate limited; cooldown active for 30.0s; delivery error: Weixin send failed: iLink sendmessage rate limited; cooldown active for 30.0s (target weixin:o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat)",
+      "deliver": "origin",
+      "origin": {
+        "platform": "weixin",
+        "chat_id": "o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat",
+        "chat_name": null,
+        "thread_id": null,
+        "user_id": "o9cq805uZu7aoWMYhFOBa48LxEBQ@im.wechat"
+      },
+      "enabled_toolsets": null,
+      "workdir": null,
+      "fire_claim": null,
+      "failure_streak": 0
+    },
+    {
+      "id": "e3739f1935ab",
+      "name": "skill同步-每月1号",
+      "prompt": "运行 skill 同步脚本：python3 ~/.hermes/scripts/skill_sync_monthly.py。该脚本将 default profile 的量化类+评审规范类 skill 增量同步到 worker-glm/worker-kimi/worker-xiaomi/orchestrator 4 个 profile。脚本幂等（仅复制缺失项），自带日志。若脚本输出\"无新增\"则保持静默；若有新增或报错，简要汇报同步数量/错误。",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": "deepseek",
+      "model_snapshot": "deepseek-v4-flash",
+      "base_url": null,
+      "script": "skill_sync_monthly.py",
+      "no_agent": false,
+      "context_from": null,
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 3 1 * *",
+        "display": "0 3 1 * *"
+      },
+      "schedule_display": "0 3 1 * *",
+      "repeat": {
+        "times": null,
+        "completed": 0
+      },
+      "enabled": true,
+      "state": "scheduled",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-08-06T23:30:46.871608+08:00",
+      "next_run_at": "2026-09-01T03:00:00+08:00",
+      "last_run_at": null,
+      "last_status": null,
+      "last_error": null,
+      "last_delivery_error": null,
+      "deliver": "local",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null
+    },
+    {
+      "id": "72f397da4a6b",
+      "name": "z-lib国信剩余5篇自动下载",
+      "prompt": "z-lib每日10篇配额于05:00重置，本任务在重置后自动下载国信量化系列剩余5篇（43a/43b+投资时钟八/九/十）到~/Downloads/国信量化系列/。成功则输出清单通知，失败输出错误。",
+      "skills": [],
+      "skill": null,
+      "model": null,
+      "provider": null,
+      "provider_snapshot": null,
+      "model_snapshot": null,
+      "base_url": null,
+      "script": "zlib_download_guoxin.sh",
+      "no_agent": true,
+      "monitor_script": null,
+      "monitor_url": null,
+      "monitor_state": null,
+      "context_from": null,
+      "schedule": {
+        "kind": "once",
+        "run_at": "2026-08-23T05:30:00+08:00",
+        "display": "once at 2026-08-23 05:30"
+      },
+      "schedule_display": "once at 2026-08-23 05:30",
+      "repeat": {
+        "times": 1,
+        "completed": 1
+      },
+      "enabled": false,
+      "state": "completed",
+      "paused_at": null,
+      "paused_reason": null,
+      "created_at": "2026-08-22T21:18:27.085237+08:00",
+      "next_run_at": null,
+      "last_run_at": "2026-08-23T05:30:54.236444+08:00",
+      "last_status": "ok",
+      "last_error": null,
+      "last_delivery_error": null,
+      "failure_streak": 0,
+      "deliver": "local",
+      "origin": null,
+      "enabled_toolsets": null,
+      "workdir": null,
+      "run_claim": null,
       "fire_claim": null
     }
   ],
-  "updated_at": "2026-07-19T03:02:05.951785+08:00"
+  "updated_at": "2026-08-23T07:05:03.729941+08:00"
 }

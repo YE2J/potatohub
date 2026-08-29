@@ -10,7 +10,7 @@ metadata:
     tags: [zlibrary, z-lib, download, books, quota, eapi, diamwall]
     category: productivity
     related_skills: [office-to-markdown, ocr-and-documents]
-    validation_status: pending  # 2026-08-23 05:30 cron 实跑 5 篇后闭合为 verified
+    validation_status: verified  # 2026-08-23 05:30 cron 实跑 5/5 成功闭合
 ---
 
 # Z-Library 下载全流程

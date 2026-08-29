@@ -32,9 +32,9 @@ This is the audit-and-fix cycle pattern, distinct from the broader review-driven
 |---------|-------|------|
 | `worker-glm` | GLM-5.1 | 架构/代码组织 |
 | `worker-kimi` | Kimi K2.6 | 逻辑/边界条件 |
-| `worker-auditor` | MiniMax M2.7 | 性能/安全/运维 |
+| `worker-minimax` | MiniMax M2.7 | 性能/安全/运维 |
 | `worker-xiaomi` | MiMo v2.5 | 数据完整性/漏检补充 |
-| `worker-qwen` | Qwen3.8-Max | 方案论证/综合分析/行业研究 |
+| `worker-qwen` | Qwen3.7-Plus | 方案论证/综合分析/行业研究 |
 
 **然后**创建 orchestrator（DeepSeek V4 Flash）做汇总合成。
 
@@ -46,7 +46,7 @@ This is the audit-and-fix cycle pattern, distinct from the broader review-driven
 
 - Kanban initialized: `hermes kanban list` works
 - Gateway running: `hermes gateway status` shows PID
-- Worker profiles exist (`worker-glm`, `worker-kimi`, `worker-auditor` at minimum) with valid API keys
+- Worker profiles exist (`worker-glm`, `worker-kimi`, `worker-minimax` at minimum) with valid API keys
 - orchestrator profile exists with `kanban` in its `platform_toolsets.cli`
 - `~/.hermes/config.yaml` has `kanban.orchestrator_profile: orchestrator`, `kanban.auto_decompose: true`, `kanban.dispatch_in_gateway: true`
 
@@ -59,7 +59,7 @@ Use `kanban_create` from the default profile to dispatch 3 worker cards, then a 
 ```bash
 hermes kanban create "<title>" --assignee worker-glm --body "..."
 hermes kanban create "<title>" --assignee worker-kimi --body "..."
-hermes kanban create "<title>" --assignee worker-auditor --body "..."
+hermes kanban create "<title>" --assignee worker-minimax --body "..."
 hermes kanban create "<title>" --assignee worker-xiaomi --body "..."
 hermes kanban create "<title>" --assignee worker-qwen --body "..."
 hermes kanban list                              # Wait for all 5 to reach 'done'
@@ -69,7 +69,7 @@ hermes kanban list                              # Wait for all 5 to reach 'done'
 cd ~/my_quant_system && python3 scripts/kanban_await.py t1 t2 t3 t4 t5 --timeout 600
 
 # orchestrator合成卡：不带--parent
-hermes kanban create "<title>" --assignee orchestrator --body '请汇总以下评审结果：\n1) TASK_ID_GLM (worker-glm: 架构)\n2) TASK_ID_KIMI (worker-kimi: 逻辑)\n3) TASK_ID_AUDITOR (worker-auditor: 性能安全)\n4) TASK_ID_XIAOMI (worker-xiaomi: 数据完整)\n5) TASK_ID_QWEN (worker-qwen: 方案论证/综合分析)\n用 kanban show 读取各卡。对 done 卡汇总，对 failed/crashed/超时todo 标记【不可用】。\n输出分类(🔴/🟡/🟢)和矛盾仲裁。'
+hermes kanban create "<title>" --assignee orchestrator --body '请汇总以下评审结果：\n1) TASK_ID_GLM (worker-glm: 架构)\n2) TASK_ID_KIMI (worker-kimi: 逻辑)\n3) TASK_ID_AUDITOR (worker-minimax: 性能安全)\n4) TASK_ID_XIAOMI (worker-xiaomi: 数据完整)\n5) TASK_ID_QWEN (worker-qwen: 方案论证/综合分析)\n用 kanban show 读取各卡。对 done 卡汇总，对 failed/crashed/超时todo 标记【不可用】。\n输出分类(🔴/🟡/🟢)和矛盾仲裁。'
 hermes kanban show <task_id>                    # Read handoff
 hermes kanban archive <task_id>                 # Clean up
 ```
@@ -85,7 +85,7 @@ Gateway 默认 60s 派发一次。可改 config.yaml 的 `kanban.dispatch_interv
 
 | 维度 | delegate_task | Kanban (profile-based) |
 |:-----|:-------------|:-----------------------|
-| **模型分配** | **子agent继承父模型的配置**（当前profile的model/provider） | **每个profile有独立模型配置**（worker-glm=GLM, worker-kimi=Kimi, worker-auditor=MiniMax, orchestrator=DeepSeek）|
+| **模型分配** | **子agent继承父模型的配置**（当前profile的model/provider） | **每个profile有独立模型配置**（worker-glm=GLM, worker-kimi=Kimi, worker-minimax=MiniMax, orchestrator=DeepSeek）|
 | **实现多模型** | ❌ 不能，除非层层嵌套不同profile（不支持） | ✅ 天然支持，每个worker配不同LLM |
 | **后台独立性** | ✅ 独立进程，各自在后台跑 | ✅ 独立进程，gateway调度 |
 | **parents死锁** | ✅ 无parents概念，不会死锁 | ⚠️ 用parents会死锁，已改为无parents模式 |
@@ -168,9 +168,9 @@ result = terminal("hermes kanban list | grep -E 'card1|card2|card3'")
 |--------|------|:--------:|------|
 | `worker-glm` | GLM-5.1 | ~3-5min | 通常最快 |
 | `worker-kimi` | Kimi K2.6 | ~5-9min | 第二快，但容易卡在 running 状态超10分钟 |
-| `worker-auditor` | MiniMax M2.7 | ~6-8min | 最慢但评审最详细 |
+| `worker-minimax` | MiniMax M2.7 | ~6-8min | 最慢但评审最详细 |
 | `worker-xiaomi` | MiMo v2.5 | ~4-9min | 2026-07-12新加入。通常3-5分，但复杂评审可达9分。接近600s超时时需使用 `--timeout 900` 加长超时 |
-| `worker-qwen` | Qwen3.8-Max | ~2-5min | 2026-08-22加入阵容。带原生推理，输出质量高；首调含冷启动可能偏慢 |
+| `worker-qwen` | Qwen3.7-Plus | ~2-5min | 2026-08-22加入阵容。带原生推理，输出质量高；首调含冷启动可能偏慢 |
 | `orchestrator` | DeepSeek V4 Flash | ~30-60s | 汇总卡极快 |
 
 **典型总等待**: ~5-10分钟（5 worker + 1 orchestrator）
@@ -234,6 +234,8 @@ Read the file to review with `read_file`. Prepare the content to pass into Kanba
 
 **评审卡 body 必须包含断言声明段和验证命令段**（详见下文模板）。
 
+**诚实硬条款（2026-08-29 用户要求，所有 agent 强制）**：禁止声称"已执行/已验证"——无命令输出=未验证，必须明确标注；无法验证的项标注「⚠️未验证」，不得冒充已通过；评审结论缺验证证据（命令输出/行号/数据点）→ 判定不合格，打回补验。
+
 ```python
 # Must create ALL available worker profiles
 t1 = kanban_create(
@@ -288,7 +290,7 @@ t2 = kanban_create(
 
 t3 = kanban_create(
     title="【代码评审-性能安全】文件名",
-    assignee="worker-auditor",
+    assignee="worker-minimax",
     body=f"""请先加载检查清单：`skill_view(name='code-review-checklist')`
 
 --- 断言声明 ---

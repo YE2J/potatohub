@@ -54,6 +54,15 @@ python3 -c "import yaml; yaml.safe_load(open('/Users/yellow/.hermes/config.yaml'
 grep -n '^agent:\|^personalities:\|^  personalities:' ~/.hermes/config.yaml  # 确认只有一个 personalities 段且归属正确
 ```
 
+### 🚨 hermes update 会重置 display.personality（实测踩过）
+
+`hermes update` 自动跑的 config 格式迁移（desktop.log 可见 `Updating config format (v33 → v34)`）会**把 `display.personality` 重置为空** `''`，导致桌面端"人格"显示"无"。人格池 `agent.personalities.*` 定义和 SOUL.md 不受影响（行为不变，只是显示标签丢失）。
+
+- 现象：用户问"为什么人格变成无/之前设置过吗" → 先 `grep -n 'personality:' ~/.hermes/config.yaml` 看激活值是否 `''`
+- 排查证据链：`hermes config get display.personality`（当前值）+ `ls ~/.hermes/config.yaml.bak*`（历史备份对比）+ `grep -n 'Updating config format' ~/.hermes/logs/desktop.log`（确认 update 时间点）
+- 修复：`hermes config set display.personality pm`（一行恢复，池定义无需重建）
+- 预防：update 后顺手 `hermes config get display.personality` 检查一次
+
 ## 记忆（memory）容量管理
 
 记忆是两个文件：`~/.hermes/memories/MEMORY.md`（agent 笔记，默认 2,200 字符 ≈ 800 tokens）与 `~/.hermes/memories/USER.md`（用户画像，默认 1,375 字符 ≈ 500 tokens），每会话开始以**冻结快照**注入系统提示。

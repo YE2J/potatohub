@@ -55,7 +55,7 @@ Use the parent-free pattern below: wait for all workers to reach `done`, THEN cr
 # 1. Create 3 worker cards (parallel execution) — no --parent
 T1=$(hermes kanban create "【评估:架构师】标题" --assignee worker-kimi --body "任务描述")
 T2=$(hermes kanban create "【评估:分析师】标题" --assignee worker-glm --body "任务描述")
-T3=$(hermes kanban create "【评估:审计师】标题" --assignee worker-auditor --body "任务描述")
+T3=$(hermes kanban create "【评估:审计师】标题" --assignee worker-minimax --body "任务描述")
 
 # 2. Wait for all workers to complete (check every 60s)
 hermes kanban list   # wait until all 3 show status=done
@@ -65,7 +65,7 @@ hermes kanban create "【合成】多Agent评估汇总" --assignee orchestrator 
   --body "请汇总以下评审结果：
 1) $T1 (worker-kimi: 研究员)
 2) $T2 (worker-glm: 工匠)
-3) $T3 (worker-auditor: 审计师)
+3) $T3 (worker-minimax: 审计师)
 
 用 kanban show 读取各卡。对 done 卡汇总，对 failed/crashed 标记【不可用】。
 输出分类(🔴/🟡/🟢)和矛盾仲裁。"
@@ -95,7 +95,7 @@ t2 = kanban_create(
 
 t3 = kanban_create(
     title="【评估:审计师】...",
-    assignee="worker-auditor",
+    assignee="worker-minimax",
     body="role and task description"
 )["task_id"]
 
@@ -107,7 +107,7 @@ kanban_create(
     body=f"""请汇总以下3张卡的评审结果：
 - {t1} (worker-kimi: 研究员)
 - {t2} (worker-glm: 工匠)
-- {t3} (worker-auditor: 审计师)
+- {t3} (worker-minimax: 审计师)
 用 kanban show 分别读取。对 done 卡汇总，对 failed/crashed 标记【不可用】。
 输出分类(🔴/🟡/🟢)和矛盾仲裁。"""
 )

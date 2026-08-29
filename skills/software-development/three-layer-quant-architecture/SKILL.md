@@ -27,7 +27,7 @@ or trade execution. It is the *build sequence and quality gate* workflow.
 
 ## Prerequisites
 
-- Hermes Kanban profiles: `worker-glm`, `worker-kimi`, `worker-auditor`,
+- Hermes Kanban profiles: `worker-glm`, `worker-kimi`, `worker-minimax`,
   `orchestrator` (each with its own LLM model config).
 - Gateway running with `dispatch_interval_seconds: 15` (config.yaml).
 - Tushare pro API 5000+ credits; env var or config.

@@ -9,7 +9,7 @@ metadata:
   hermes:
     tags: [a-share, strategy, backtest, walk-forward, overfitting, cost]
     category: a-share
-    related_skills: [a-share-backtesting, a-share-factor-ic-evaluation, quant-alpha-factory]
+    related_skills: [a-share-backtesting, a-share-factor-ic-evaluation, quant-alpha-factory, distribution-builder-sell, risk-portfolio-optimizer, nonparametric-var]
 ---
 
 # A股策略研发流程 — 中低频量化策略完整方法论
@@ -100,7 +100,24 @@ A股中低频量化交易策略研发的科学流程：规避未来信息、推�
 - 冲击成本与流动性相关：小盘/低流动性股冲击更大
 - 回测至少测 3 档成本（0/万0.25/万0.5）画敏感性曲线
 
-## 步骤 5 — 策略评价体系
+## 步骤 5 — 随机基线对比（LLM 信号校准检查）
+
+**背景**（arXiv:2608.20304, Calibration-Induced Degeneracy）：LLM/ML 生成的原始信号经过 min-max 或 rank 校准后，**会把随机噪声放大成看似显著的 alpha**。信号值分布的非均匀性（如大量极值/聚集）会在校准后产生虚假的方向性。
+
+**必做检查**（任何用 LLM 信号/评分做选股或择时的策略）：
+1. **随机基线回测**：把信号序列随机打乱（permutation test，≥1000 次），或替换为同分布随机噪声，跑同样的回测管线
+2. **对比基准**：真实信号 vs 随机基线 的收益/IC 分布。真实信号必须落在随机分布 95% 分位之外才算有效
+3. **校准前后对比**：分别对 原始信号 和 min-max 校准后信号 计算 IC；若校准显著提升 IC 而原始信号 IC≈0 → 警惕校准幻觉
+4. **极值检查**：信号值若大量集中在 [0,1] 两端（min-max 后）且中间稀疏 → 校准畸变信号，先看原始分布
+
+**判定标准**：
+| 检查结果 | 判定 |
+|---|---|
+| 真实 IC > 95% 随机基线分位 | ✅ 信号有效 |
+| 真实 IC 落在随机分布内 | ⚠️ 信号疑似噪声 |
+| 校准后 IC 突增但原始 IC≈0 | ❌ 校准幻觉，弃用 |
+
+## 步骤 6 — 策略评价体系
 
 | 维度 | 指标 | 备注 |
 |---|---|---|
@@ -127,6 +144,7 @@ A股中低频量化交易策略研发的科学流程：规避未来信息、推�
 - [ ] 推进分析完成（优化期 vs 检验期对比）
 - [ ] 等分回测单调性检验
 - [ ] 成本敏感性 ≥3 档
+- [ ] **随机基线对比（LLM 信号必做：permutation test 或校准前后 IC 对比）**
 - [ ] 回撤时长已记录
 - [ ] 存活者偏差已检查
 

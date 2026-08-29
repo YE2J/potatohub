@@ -126,7 +126,7 @@ metadata:
 
 > **实操速度对比**：详见 `references/operational-guide.md`
 > - `delegate_task`: ~15s（DeepSeek 代审，非 MiniMax）
-> - `hermes -p worker-auditor chat`: ~42s（完整 MiniMax-M3）
+> - `hermes -p worker-minimax chat`: ~42s（完整 MiniMax-M3）
 
 ### 方式一：通过 delegate_task（推荐）
 
@@ -162,23 +162,23 @@ delegate_task(
 ### 方式二：通过 Kanban 派发（绕过 delegate_task 模型硬编码 bug）
 
 ```bash
-# 创建 worker-auditor profile，配置为 MiniMax-M3
-hermes profile create worker-auditor --clone-from default
-hermes config set model.provider minimax --profile worker-auditor
-hermes config set model.default minimax-m3 --profile worker-auditor
-hermes config set model.base_url '' --profile worker-auditor
+# 创建 worker-minimax profile，配置为 MiniMax-M3
+hermes profile create worker-minimax --clone-from default
+hermes config set model.provider minimax --profile worker-minimax
+hermes config set model.default minimax-m3 --profile worker-minimax
+hermes config set model.base_url '' --profile worker-minimax
 
-# 写入这个 SOUL 到 worker-auditor 的 SOUL.md
-cp ~/.hermes/skills/autonomous-ai-agents/minimax-auditor/SKILL.md ~/.hermes/profiles/worker-auditor/SOUL.md
+# 写入这个 SOUL 到 worker-minimax 的 SOUL.md
+cp ~/.hermes/skills/autonomous-ai-agents/minimax-auditor/SKILL.md ~/.hermes/profiles/worker-minimax/SOUL.md
 
-# 通过 Kanban 系统派发 → 自动走 worker-auditor profile
+# 通过 Kanban 系统派发 → 自动走 worker-minimax profile
 hermes -p orchestrator chat -q "派审计师审计以下内容：..."
 ```
 
 ### 方式三：直接通过 terminal 调用
 
 ```bash
-hermes -p worker-auditor chat -q "请审计以下内容... [粘贴审计材料]"
+hermes -p worker-minimax chat -q "请审计以下内容... [粘贴审计材料]"
 ```
 
 ## ⚠️ 已知限制

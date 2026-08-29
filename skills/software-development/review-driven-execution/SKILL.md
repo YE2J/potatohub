@@ -138,6 +138,20 @@ Each phase has an **entry criterion** (prerequisites done) and an **exit criteri
 - 后端 API 路由/中间件/模型 → 评审
 - 重构/优化现有代码 → 评审
 
+### 代码评审 5 维校验（每轮评审强制，运行时实证）
+
+**规则：** 每轮评审的结论（尤其"通过"判定）必须经过以下 5 维校验，缺一不可。这是本用户对评审的硬性要求，**评审 Agent 不能只凭代码阅读下结论，必须验证真实可运行**。
+
+| 维度 | 含义 | 验证方法（示例） |
+|------|------|------------------|
+| 1️⃣ 类型兼容 | 字段/列类型正确，无类型错配 | `PRAGMA table_info(表名)` 确认列类型与写入值一致 |
+| 2️⃣ 路径可达 | 引用的文件/目录真实存在 | `ls` 确认路径存在、大小写正确 |
+| 3️⃣ 执行权限 | 脚本有执行权限 | `stat -f "%Sp" 脚本` 确认含 `+x` |
+| 4️⃣ 数据格式 | 单位、日期等格式正确 | 单位转换链完整（如 万元↔亿元）；日期统一 `YYYYMMDD` |
+| 5️⃣ 运行时验证 | 实际执行过，非纸上推演 | 真实运行脚本/查询，核对输出与预期 |
+
+**执行纪律：** 5 维校验**每轮生效**（不只是最终轮）；评审 Agent 声称"已验证"必须有对应命令输出背书；无法验证的项明确标注"未验证"，不得冒充已通过。
+
 ### ⚠️ 关键设计决策：汇总卡永远不要用 parents
 
 **核心规则：orchestrator 汇总卡不能带 `parents=[t1,t2,t3]`。** 任何 worker 崩溃都会导致 orchestrator 永久死锁，进度完全停止。
@@ -183,7 +197,7 @@ python ~/my_quant_system/scripts/kanban_await.py t_glm t_kimi t_auditor --timeou
 |--------|------|:--------:|
 | `worker-glm` | GLM-5.2 | ~3-5min |
 | `worker-kimi` | Kimi K2.7-code | ~6-10min（已知不稳定）|
-| `worker-auditor` | MiniMax M2.7 | ~5-8min |
+| `worker-minimax` | MiniMax M2.7 | ~5-8min |
 | `orchestrator` | DeepSeek V4 Flash | ~30-60s |
 
 `--timeout` 建议设为 900s（15分钟），覆盖最慢情况。
@@ -205,7 +219,7 @@ python ~/my_quant_system/scripts/kanban_await.py t_glm t_kimi t_auditor --timeou
 STEP 1: 创建 3 张 Kanban 卡（Worker 评审，不带 parents）
   ├─ kanban_create("【评审-架构】...", assignee=worker-glm)
   ├─ kanban_create("【评审-逻辑】...", assignee=worker-kimi)
-  └─ kanban_create("【评审-性能安全】...", assignee=worker-auditor)
+  └─ kanban_create("【评审-性能安全】...", assignee=worker-minimax)
   ↓\nSTEP 2: 启动自动推送 + 等全部 3 个 worker 完成（done）\n  ├─ hermes kanban list （15s 派发间隔，约2-8分钟）\n  ├─ **自动推送**: `python ~/my_quant_system/scripts/kanban_await.py t_glm t_kimi t_auditor &`\n  └─ 注意 Kimi 较慢（~6-10min），MiniMax ~5-8min
   ↓
 STEP 3: 创建汇总卡（不带 parents！body 写 kanban show 指令）
@@ -229,7 +243,7 @@ STEP 7: 闭环，推进下一步
 |------|---------|------|---------|--------|
 | 🏗 **架构/可维护性** | `worker-glm` | GLM-5.2 | 代码结构、复用性、命名、模块边界、文件大小 | 重复代码、函数过长、import 规范 |
 | 🔬 **逻辑/正确性** | `worker-kimi` | Kimi K2.7-code | 逻辑正确性、边界条件、测试覆盖 | off-by-one、空值处理、数据类型兼容 |
-| ⚡ **性能/安全** | `worker-auditor` | MiniMax M2.7 | SQL 性能、内存使用、安全风险、异常处理 | N+1查询、索引失效、静默吞异常 |
+| ⚡ **性能/安全** | `worker-minimax` | MiniMax M2.7 | SQL 性能、内存使用、安全风险、异常处理 | N+1查询、索引失效、静默吞异常 |
 | 👤 **汇总** | `orchestrator` | DeepSeek Flash | 整合 3 份评审，分类修复优先级 | 矛盾点仲裁、遗漏补充 |
 
 ### Kanban 派发代码（正确的无 parents 模式）
@@ -250,7 +264,7 @@ t2 = kanban_create(
 
 t3 = kanban_create(
     title=f"【代码评审-性能安全】{文件名}",
-    assignee="worker-auditor",
+    assignee="worker-minimax",
     body=f"评审以下代码的SQL性能/内存/安全风险：\n\n```python\n{code_content}\n```"
 )["task_id"]
 
@@ -264,7 +278,7 @@ kanban_create(
     body=f"""请汇总以下3张卡的评审结果：
 - {t1} (worker-glm: 架构评审)
 - {t2} (worker-kimi: 逻辑评审)
-- {t3} (worker-auditor: 性能安全评审)
+- {t3} (worker-minimax: 性能安全评审)
 
 请用 `hermes kanban show {t1}` / `{t2}` / `{t3}` 分别读取每张卡的结果。
 对已经 done 的卡做汇总，对 failed/crashed 的卡标记【失败：该worker不可用】。

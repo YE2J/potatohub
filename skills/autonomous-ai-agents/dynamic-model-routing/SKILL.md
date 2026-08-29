@@ -243,7 +243,7 @@ The Kanban system dispatches tasks to profile-specified models natively, bypassi
 # Parallel cards, each assigned to a different model's profile
 t1 = kanban_create(title="Research X", assignee="worker-kimi", body="...")["task_id"]
 t2 = kanban_create(title="Code Y", assignee="worker-glm", body="...")["task_id"]
-t3 = kanban_create(title="Audit Z", assignee="worker-auditor", body="...")["task_id"]
+t3 = kanban_create(title="Audit Z", assignee="worker-minimax", body="...")["task_id"]
 
 # Synthesis gated on all three
 kanban_create(title="Synthesize", assignee="orchestrator", body="...", parents=[t1, t2, t3])
