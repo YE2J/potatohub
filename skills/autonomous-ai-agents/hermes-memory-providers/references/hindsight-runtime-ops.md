@@ -56,3 +56,24 @@ print(r.stdout if r.returncode==0 else r.stderr)
 - 单 daemon：hindsight-api 9177（随 Hermes serve 拉起，**无 launchd 常驻**）
 - 单 postgres：**5432**（hindsight-embed-hermes）——注意旧文档记 5433，那是双 daemon 时期 hermes profile 的端口；孤儿 daemon 清理后新实例占 5432
 - bank=hermes：36 有效 + 10 失效 + 27 实体 + 258 链接 + 5 文档
+
+## 故障实录：huggingface.co 不可达 → daemon 启动超时（2026-09-04 修复）
+
+**症状**：retain/recall 420s 超时；日志反复 `'timed out' thrown while requesting HEAD https://huggingface.co/.../modules.json`（Retry 5/5）；最终 `Daemon failed to start (timeout)`。daemon 进程活着（ps 可见）但 9177 无监听、CPU 0.0%（卡网络等待）。
+
+**根因**：huggingface.co 网络不可达（`curl -sI -m 10 -o /dev/null -w "%{http_code}" https://huggingface.co` → HTTP 000 exit=28）。模型缓存虽完整（~/.cache/huggingface/hub/models--*/snapshots/*/），但 daemon 每次启动时 huggingface_hub 仍做远程版本 HEAD 检查，超时重试耗尽启动窗口。
+
+**修复（一劳永逸，本地路径方案）**：`~/.hindsight/profiles/hermes.env` 加两行，把模型标识从 repo id 改为本地 snapshot 绝对路径：
+```
+HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL=/Users/<user>/.cache/huggingface/hub/models--BAAI--bge-small-en-v1.5/snapshots/<commit_hash>
+HINDSIGHT_API_RERANKER_LOCAL_MODEL=/Users/<user>/.cache/huggingface/hub/models--cross-encoder--ms-marco-MiniLM-L-6-v2/snapshots/<commit_hash>
+```
+原理：daemon_embed_manager spawn 时 `load_profile_config(profile)` 读 hermes.env → **只 propagate `HINDSIGHT_` 前缀键**进 daemon env → SentenceTransformer(本地目录) 不触发 huggingface_hub → 秒级启动。
+
+**关键机制（排查必读）**：
+- daemon env = `os.environ.copy()`（hermes serve 环境）+ HINDSIGHT_* 白名单 propagate → **非 HINDSIGHT_ 变量（如 HF_HUB_OFFLINE）写 hermes.env 无效**，只能靠父进程环境（GUI app 需 launchctl setenv + 重启）
+- `hindsight-api --daemon` wrapper 会 daemonize（wrapper 退出、真身父=launchd）；手动起 daemon 后 Hermes 插件检测健康会复用（_clear_port 不杀 hindsight 进程）
+- 插件 spawn 的 daemon 父=hermes serve；Hermes 重启会重新 spawn（hermes.env 本地路径 → 秒启动，无复发）
+- ps 排查注意：`ps aux | grep hindsight-api` 匹配不到 `python -m hindsight_api.main`（连字符 vs 下划线），用 `grep -E "hindsight_api.main|hindsight-api"`
+- 验证命令：`curl -s http://localhost:9177/health` → healthy；`ps eww <pid> | grep HINDSIGHT_API_EMBEDDINGS_LOCAL_MODEL` 确认 env；日志无 HF timed out 即干净
+- 离线快速加载验证：`HF_HUB_OFFLINE=1 python -c "from sentence_transformers import SentenceTransformer; m=SentenceTransformer('<snapshot_path>'); m.encode(['x'])"`

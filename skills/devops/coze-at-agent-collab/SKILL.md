@@ -46,7 +46,9 @@ coze agent at --mode response \
 
 | 返回 | 含义 | 对策 |
 |---|---|---|
-| 400 `response does not match a collaboration request` | reply-to-message-id 用错（误用 message_id），或该请求已失效 | 核对字段后换值重试一次 |
+| 400 `response does not match a collaboration request` | reply-to-message-id 用错（误用 message_id），或该请求已失效；⚠️ 也发生在**目标 agent 已被删除**（turn aborted: agent_deleted -32020）——请求随原 agent 一起死亡，id 再对也回不上 | 先 `coze agent member list` 确认自己还在、发起方还在；若本地侧是新实例接管，别再重试 response，走下方「接管/补交场景」改发 request |
+| E1103 `MISSING_OPTION` | **request 模式也强制要 `--reply-to-message-id`**（权威文档没标 request 的必填性） | 用当前 turn coze-context 的 `reply_to_message_id`（普通群聊消息时 = message_id）补上 |
+| E1000 `Invalid --targets: expected a JSON array` | targets 内含未转义换行/引号，被 shell 破坏 | 见下「JSON 构造铁律」：Python json.dumps 落盘再读入 |
 | 500 `at_agent service is unavailable` | 扣子平台侧服务故障，与本地无关 | 停止手动高频重试，走降级流程 |
 | 认证错误 | token 问题 | `coze auth status --format json` |
 
@@ -57,9 +59,42 @@ coze agent at --mode response \
 3. 群聊内直接贴出完整结果文本兜底，保证主人当下可用。
 4. 主人问进度时把两件事分开表述：「任务本身已完成」vs「回执通道平台故障」，附最新 logid 与下次重试计划，避免被误认为没干活。
 
+## 接管/补交场景（2026-09-02 实测：原 agent 崩溃+删除，新实例接管）
+
+旧 agent 处理协作请求中途崩溃（如 billing 429）后被删除 → 入站请求的 response 通道随之失效。**即使 reply-to-message-id 完全正确，`--mode response` 也报 400**，因为请求已随原 agent 死亡。恢复路径：
+
+1. 不要反复重试 response（不会成功）。
+2. `coze agent member list` 确认当前存活成员：删除后群里可能只剩发起方 + 新本地实例，claw_id 全变。
+3. 内容照常落盘 Coze Drive 共享目录（如 `/Users/yellow/Coze/Drive/<项目>/`）。
+4. 改发 **`--mode request` 给原发起方**，message 开头注明「前序协作请求发起时原本地 agent 已崩溃删除，现由接管实例 <名字> 补交」，正文 = 原要求的完整报告；回复人汇总给用户。
+5. 向用户汇报时说明：任务内容本身已完成并送达（附 message_id/status=accepted），与旧 agent 崩溃是两件事。
+
 ## 发起协作请求（--mode request）
 
 要点（详见注入的权威文档）：先 `coze agent member list --project-id <group_id> --format json` 选 `user_type=2` 且有 `claw_id` 的成员；`--targets` 为 JSON 数组（≤3 个，每项含 target_claw_id/message/response_target_type）；排除自己；不转发密钥。
+
+⚠️ request 模式**同样必须** `--reply-to-message-id <当前 turn 的 reply_to_message_id>`（权威文档模板中有但陷阱清单常被忽略；缺它报 E1103）。
+
+### JSON 构造铁律（--targets 含长中文/换行时）
+
+内联 `--targets '[...$MSG...]'` 遇换行/引号必被 shell 破坏（E1000）。用 Python 构造合法 JSON 落盘再读入：
+
+```bash
+python3 -c "
+import json
+msg = open('report.md', encoding='utf-8').read()
+msg = '【补交说明】...\n\n' + msg[:3700]   # 单条 ≤4000 码点
+open('targets.json','w',encoding='utf-8').write(json.dumps(
+    [{'target_claw_id':'<对方claw_id>','message':msg,'response_target_type':'agent'}],
+    ensure_ascii=False))
+"
+coze agent at --mode request \
+  --project-id "<group_id>" --source-claw-id "<agent_id>" \
+  --reply-to-message-id "<reply_to_message_id>" \
+  --targets "$(cat targets.json)" --format json
+```
+
+成功判据同 response：`code=0` + `data.status="accepted"` + `data.message_id` 非空。
 
 ## 陷阱清单
 
@@ -67,3 +102,5 @@ coze agent at --mode response \
 - 无请求级幂等保证：超时后不要自动盲重试，先保留 logid 核实；确认失败才可重发（可能产生重复协作消息）。
 - 尺寸限制：reply_to_message_id ≤256 UTF-8 字节；单条 response ≤4,000 字符、全部 targets 合计 ≤32KiB。
 - 收到 mode=response 时只消费合成，绝不再调 at_agent（防死循环）。
+- agent_deleted（turn aborted code -32020）后：旧 agent 的协作请求全部作废，接管实例一律走「接管/补交场景」的 request 补交，勿试 response。
+- 每次以当前 turn 的 coze-context 取 ID（account_id/group_id/agent_id/reply_to_message_id），不跨 turn 复用——agent 被删重建后 agent_id 会变（2026-09-02：7676100391154729225 → 7680925600332431616）。

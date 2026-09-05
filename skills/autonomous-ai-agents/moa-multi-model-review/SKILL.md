@@ -257,10 +257,19 @@ Key lesson: Do NOT fix in random order. A P0 fix may touch the same lines as a P
 9. 字数/资源限制下是否可能溢出
 10. None/NULL 值传入时的降级行为
 
+## ⚠️ MOA 输出判别器（2026-09-01 实测教训，防存档伪造）
+
+用户执行 `/moa` 后，**用户消息里出现的提示词回显 ≠ MOA 结果**。真实结果以系统注入的 `[Mixture of Agents reference context]` 块到达（含 Reference 1..N 编号的模型输出 + aggregator 指令），且出现在提示词之后**独立的轮次**，不会与提示词同轮出现。
+
+**铁律：未看到该注入块之前，禁止写任何 moa_raw/aggregated 存档**。存档内容必须能在注入原文中逐条溯源；把聚合器工作（评分/仲裁/A-F 综合）安到参考模型头上 = 伪造；虚构参考模型身份（对照 `hermes moa list` 实测即识破） = 伪造。参考模型无工具权限，其"已写盘/已实测"声明一律为幻觉。
+**等待期硬约束（Case #5，2026-09-05）：未看到 `[Mixture of Agents reference context]` 注入块前，禁止输出任何含参考模型归属/编号（"6家一致""Reference N 建议"等）的聚合内容；等待期间回复仅限「MOA 已触发，等待参考块到达」。声称参考块已到达而上下文无注入块 = 虚构，即使随后自我更正仍属违规。**
+
 ## ⚠️ 重要约束
 
 - **参考模型之间互相不可见**（与多轮辩论不同），只有聚合模型看到全部
 - **参考模型可能编造"实查结果"（2026-08-25 实测）**：参考模型声称的文件/数据事实（如"某文件含 30+ git 冲突标记""某目录有碎片"）可能是幻觉，**必须由执行代理亲自验证**（grep/read_file/数据库查询）后才可采信或转述。本次 MOA 评审中 Minimax 声称 wiki 文件损坏，实查为 0 处冲突标记、文件干净。发现虚构 → 在汇总中明确标注不实，并在 `运维避坑` 记录，后续降级该模型的事实类发言权重。聚合器的核心职责不是"综合"，是**验证后综合**。
+- **全票共识 ≠ 前提正确（2026-09-02 实测；比个别幻觉更危险）**：审计中 6/6 参考模型把 `moneyflow_tushare_main_daily`（实测自选股表，每日 2~4 行）当"全市场表（数千行/日）"，一致把"整日 DELETE"定级 P0 数据灾难；聚合器 `SELECT trade_date, COUNT(*), COUNT(DISTINCT ts_code) ... GROUP BY trade_date` 实测后降级 P1（实际数据损失 = 0）。**影响定级的前提事实（表规模、cron 实际调用文件、受影响行数）必须由聚合器独立实测，不得因"6/6 都这么说"采信——投票一致 ≠ 事实正确。** 详见 `references/aggregator-premise-verification.md`。
 - 如果需要多轮辩论（A反驳B），需要手动编排多轮 MOA 或改 Kanban parents
 - **Token 消耗**：5 次参考模型调用 + 1 次聚合 = 约 17,000~22,000 tokens
 - MOA 的参考模型 `provider:model` 必须已在 config 中配置了 API key
+- 判别器细节（含同花顺 GB18030 文件编码坑）见 `references/moa-output-discriminator-20260901.md`

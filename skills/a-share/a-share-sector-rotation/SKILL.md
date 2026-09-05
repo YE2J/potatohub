@@ -94,6 +94,39 @@ Tushare MCP / Python SDK
 
 → 结论：显式纳入**行业相关结构**（相关系数矩阵）比纯动量强。当前引擎为资金流+技术面热度评分，若扩展轮动信号可参考半伙伴算法：用行业收益+行业相关矩阵选强势行业簇，作为 L2 热度评分的交叉验证或替代候选。参数须用当前数据重新验证（老研报参数勿直接引用）。
 
+**领涨-滞后集群轮动信号（论文 2608.24703，2026-09 补充）**：行业间普遍存在领先-滞后关系（产业链上下游传导即其自然来源）。论文用聚类把时序分成"同簇共动"组，簇内再分 Leaders/Laggers，用 Leader 信号交易 Lagger——与半伙伴算法互补（半伙伴用相关系数矩阵，本方法用**时序形态相似 + DTW 错位结构**）。论文在 CRSP 679/1028 只股票、2000-2019 日频上实证：聚类稳定性与回测（Sharpe/回撤）均优于无聚类的直接动量，四类聚类算法横向可比。
+
+**管线（滑动窗口版，股票级→平移为行业指数级）**：
+1. **输入序列**：N 个行业（申万一级 31 或 THS 行业板块子集）的日收益，交易日历对齐（trade_cal 查询必须 DISTINCT，见 P10/P13 教训）；剔除长期停更/成分缺失的板块，取完整可算的 30-50 个（论文规模 679-1028 资产，行业级样本更小，⚠️ 需自行验证序列数是否够，见"落地注意"）。
+2. **滑动窗口取子序列**：固定窗长 l=21 个交易日取 X_{N×l}，滑窗步长 w 自定（⚠️ 论文未披露 w 数值，同口径下自行固定，建议 w∈{1,5} 做敏感性）。
+3. **窗内聚类**（4 种算法同框架对比，论文核心贡献之一就是"同策略下换聚类算法"比较）：
+   - **DTW-KMedoids**（基准，Zhang et al. 2023）：DTW 距离矩阵 + KMedoids（质心取真实样本点，抗金融噪声；DTW 不满足三角不等式、复杂度高）。
+   - **KShape**：SBD 形状距离（基于归一化互相关的最大时滞对齐），对幅度缩放与相位平移不变，效率高、稳健。
+   - **MiniRocket-KMeans**：MiniRocket 用轻量膨胀卷积把每条序列映射为 PPV 特征向量（欧氏空间），再跑 KMeans；大规模组合聚类从小时级降到分钟级（相对原 ROCKET 最高 ~75× 加速）。
+   - **Ensemble（硬投票）**：两两同簇当且仅当 DTW-KMedoids 与 KShape 都判同簇；最稳但最保守（会浪费有效 lead-lag 对）。
+4. **簇数 K 自动定**：扫 K（论文未给扫描范围 ⚠️，落地建议 K∈2..min(10, N/2) 网格），取**平均轮廓系数 S=(1/n)Σs(i) 最大**者为最优簇数。论文实证：最优 K 下四算法的聚类稳定性（跨窗口长度 ARI 不再显著波动）与回测表现均提升，优于固定 K=3。
+5. **簇内 Leaders/Laggers 划分**：对簇内资产对做 DTW 对齐得局部滞后 δ_ij^k，聚合为全局滞后 L̂_ij——**median**（反映分布中心，合成 MSE 更低、多数回测略优）或 **mode**（对噪声离群更鲁棒）；构造对称 lead-lag 矩阵 **M[i,j] = L̂_ij − L̂_ji**；行和 RowSum 得领先分 S_i=Σ_j M[i,j]，排序分档。⚠️ 论文 §2.6.2 理论节写"最高 α=0.25 为 Leader"，§4.2 实验节写"排序后前 75% 为 Leader 集 ℒ、其余为 Lagger 集 𝒢"，两处表述不一致——落地以实验设定 top 75% 为默认并把比例当敏感性参数。
+6. **交易信号**：s = sign( 1/|ℒ| · Σ_{k∈ℒ} EWMA(R_k, span p) )，p∈{1,3,5,7}；按策略类型取 PnL：
+   - **lead 策略**（做 Leader 篮子，动量延续）：PnL_i = s · mean(R_ℒ(t+i·w+f))；
+   - **lag 策略**（龙头领涨→滞后补涨，本技能想要的轮动语义）：PnL_i = s · mean(R_𝒢(t+i·w+f))——同簇 Laggers 相对 Leaders 滞后，Leader 动量为正时滞后簇有补涨倾向。
+   论文实证（679 资产集，lead 策略）：**MiniRocket-KMeans_med 最优，Sharpe 0.866、年化 6.21%、最大回撤 -63.9%**；KShape_med 0.808、DTW_med 0.801；多数算法 med 略优于 mode；全部策略 Sharpe 显著性检验 p=0.0。**Ensemble 两数据集表现最一致、无极端差结果**（稳健性最强，1028 资产集 lag 策略最优 0.474；⚠️ 论文文字称其在 679 集 lag 最优，与其表 2 数字矛盾——表 2 中 679 集 lag 最高为 DTW_med 0.793）。⚠️ 论文为多空 PnL 且未见成本建模——A股落地必须转 long-only/flat 变体（A股做空受限）并加成本敏感性（见 a-share-strategy-research-flow 步骤 4，万0.25/万0.5 档）。
+
+**A股数据落地**：
+- 行业日线序列：申万 `sw_daily`（801xxx.SI，一级 31 行业）或 THS `ths_index`(type='I'，881xxx.TI 行业板块，~90 个，质量差/长期缺失的剔除后取 30-50）；成分映射用 `ths_member`（板块→成分股）。
+- 簇级信号与现有 L2 引擎对接：簇内板块的资金流可由其成分股经 `industry_moneyflow_dc`/`ths` 聚合（或直接读行业资金流表），簇平均资金流/热度可与 `calc_sector_heat` 评分做交叉验证（沿用龙头识别 DC/THS 双源交叉 +20 的验证思路）；"龙头簇"（簇内 Leader 平均领先分最高者）上榜后，其 Lagger 簇可作为 L3 候选补涨标的，须先过 L1 温度与 L3 估值门控（沿用 decision_fusion 现有 gate，勿绕过）。
+
+**评估协议（合成数据 + 同一策略）**：
+1. **合成数据**（论文 §3）：滞后多因子模型 X_i^t = Σ_j B_ij·f_j^{t−L_ij} + ε_i^t，Single Membership + Heterogeneous K=3 设定（最代表最复杂情形），每个时间序列只滞后暴露于单一因子；噪声 σ∈{0.5→3.0}、窗口长度两档（小/大）；**每设定重复 100 次取均值±95% CI**。指标：**ARI**（聚类 vs 真标签；低噪声 KShape 最优、高噪声 MiniRocket 最优、其余三者普遍高于 DTW-KMedoids）与 **lag 矩阵 MSE**（median 估计优于 mode；Ensemble 最优）。行业数据无真值，合成是唯一 ground-truth 校验。
+2. **真实 A股同一策略对比**：固定交易策略骨架（同 l=21、同 p、同 w、同 f、同成本档），只换聚类算法 × 聚合估计（med/mod）→ 8 组合 × {lead, lag}，对比 Sharpe/年化/最大回撤/命中率/盈亏比（论文口径：命中率 ~0.52、盈亏比 ~1.05-1.09、Sharpe p 值全 0.0）；基线 = 无聚类的全行业直接动量 + 现有 L2 资金流热度信号（同口径、同成本）。
+3. **稳定性**：最优 K vs 固定 K=3 的 silhouette 对比；相邻窗口聚类结果 ARI（跨窗口漂移率）；窗口长度敏感性（论文合成结论：窗长<10 时 MSE 随窗长上升，>10 后平稳——默认 l=21）。
+
+**落地注意（⚠️ 均为论文未直接覆盖、需自行验证处）**：
+- 论文是股票级（679-1028 资产）实证；行业级仅 30-50 条序列，簇数少、簇内样本小，lead-lag 结构更可能存在于**跨行业产业链**（上游→中游→下游）而非行业内部——应先做行业对 DTW 滞后分布的描述性检查再上策略。
+- 行业指数是成分股聚合，个股级领先信息可能被指数平滑掉；若行业级信号弱，可退回用 `ths_member` 成分做"簇内龙头股→板块"两级映射（龙头股在簇内的领先性先行验证）。
+- 论文回测未见交易成本与 A股涨跌停/停牌约束 → 成本敏感性 + 可交易性过滤必做。
+
+---
+
 **数据源切换**: 通过 `DATA_SOURCE = 'dc'` 常量控制，支持 `'dc'` (东方财富) 和 `'ths'` (同花顺)：
 - DC模式：读 `sector_moneyflow_dc`/`industry_moneyflow_dc` 表，`net_amount/1e4` 归一化，MA占比固定0.5（中性，因DC代码与ths_member不兼容）
 - THS模式：读 `sector_moneyflow_ths`/`industry_moneyflow_ths` 表，通过 `ths_member` 计算MA占比
@@ -172,9 +205,10 @@ Tushare MCP / Python SDK
   rzrqye      REAL   -- 融资融券余额
 ```
 - **来源**: `pro.margin(trade_date='YYYYMMDD', exchange_id='SSE'/'SZSE'/'BSE')`
-- **覆盖**: 全2026年历史（128交易日），脚本 `backfill_margin_balance.py`
+- **覆盖**: 全2026年历史（128交易日），脚本 `backfill_margin_balance.py`（仅限历史回填，勿用于日常增量）
 - **cron**: 每日 18:35，`daily_margin_balance.py`
-- **晨报**: `report_margin_balance()` 按交易所展示 + 较上日变动
+- **⚠️ 发布滞后**: Tushare 两融数据滞后 2-3 个交易日才发布（实测 8-25 数据 8-28 才可查），且 SSE/SZSE/BSE 各所发布不同步（如某日仅 SSE 有数据）。晨报消费端必须做"回退到最近可用日期"处理，详见 P13。
+- **晨报**: `report_margin_balance()` 按交易所展示 + 较上日变动（含回退显示逻辑，见 P13）
 
 ### 8. 三层决策新表 (migrations/004_create_three_layer_tables.sql)
 ```sql
@@ -240,11 +274,13 @@ cron设在 `45 18 * * 1-5`（板块资金流）和 `30 18 * * 1-5`（大盘资�
 排查技巧: 查龙头股资金流时如返回全空，先确认用的列名是否正确。
 
 ### P10. 晨报版本文档
-当前晨报使用 `daily_morning_report_v6.py`（v6.0），数据源切换为 DC（东方财富）。
-- 晨报cron: `3cb6fbcc8dcc`（每日07:05，agent模式，推送微信）
-- v5→v6变更: THS→DC板块表，资金量级万元→亿级，新增DC cron监控，新增两融余额+大盘温度模块，修复trade_cal重复行导致的连续天数翻倍
+当前晨报使用 `daily_morning_report_v7.py`（v7，no_agent 模式，脚本 `~/.hermes/scripts/daily_morning_report_v7.py`）。
+- 晨报cron: `3cb6fbcc8dcc`（每日07:05，no_agent，推送微信）
+- v5→v6变更: THS→DC板块表，资金量级万元→亿级，新增DC cron监控，新增两融余额+大盘温度模块
+- v6→v7变更: no_agent 模式 + cron 日志系统 + Wiki L2/L3 消费；2026-08-30 两融模块增加回退显示/部分数据保护/周总结动态标签（见 P13）
+- ⚠️ trade_cal 重复行（实测全表日期×2）：晨报侧 `get_recent_trading_days` 已用 DISTINCT 免疫，但**采集侧缺口查询也必须 DISTINCT**（v6 只修了报告侧，采集侧 2026-08-30 才补上，见 P13）
 - 非交易日判定: 通过 trade_cal 动态放宽数据时效阈值，非交易日不报"通道异常"
-- 截断优先级（高→低）: 板块资金流(1) > 两融余额(2) > 大盘温度(3) > 昨日任务(4) > 采集状态(5)
+- 截断优先级（高→低，实际代码 modules_info）: 板块资金流(1) > 本周总结(1) > 两融余额(3) > 大盘温度(4) > 昨日任务(5) > 采集状态(6)
 - 温度模块: `report_market_temperature(conn=None)` 复用build_report传入的conn；交易日展示三维分解+规则分析+建议；非交易日提示无更新+最新温度；conn泄漏由close_conn守卫
 
 **cron验证清单（修改管线后必做）**:
@@ -281,7 +317,34 @@ cron设在 `45 18 * * 1-5`（板块资金流）和 `30 18 * * 1-5`（大盘资�
 **晨报集成**:
 - `report_margin_balance()` 模块展示三所两融明细 + 全市场合计 + 较上日变动
 - 以 `💰 两融余额` 标题排在板块资金流之后
-- 截断优先级: 板块资金流(1) > 两融余额(2) > 大盘温度(3) > 昨日任务(4) > 采集状态(5)
+- 截断优先级: 板块资金流(1) > 本周总结(1) > 两融余额(3) > 大盘温度(4) > 昨日任务(5) > 采集状态(6)
+
+### P13. 两融数据发布滞后与采集/晨报消费修复（2026-08-30，Kanban 5-agent 评审 + 实跑验收）
+
+**现象**: 晨报两融模块连续显示 "❌ 无两融余额数据"，两融数据永久滞后 2-3 个交易日。
+
+**根因链**: ①Tushare margin 接口滞后 2-3 交易日才发布（8-25 数据 8-28 才可查）；②采集脚本每天只补第一个缺口日就退出→永远追不上；③晨报精确查"最新交易日"查空就 ❌，不回退 DB 最近可用日期；④**trade_cal 表每日期重复 2 行**（实测 26128 行 / 13162 去重），采集侧缺口查询无 DISTINCT，循环补缺口会重复拉取；⑤各交易所发布不同步（某日仅 SSE 有数据），部分数据展示"全市场"会误导。
+
+**修复（`daily_margin_balance.py` + `daily_morning_report_v7.py`）**:
+
+| 端 | 修复 |
+|---|---|
+| 采集 while 循环 | 从第一个缺口逐日拉取，**遇当日三交易所全空（written==0）才停**（数据顺序发布）；上限 `MARGIN_MAX_BACKFILL` 环境变量（默认 8≈1.5 周，覆盖长假）；缺口查询必须 **`SELECT DISTINCT cal_date`** |
+| `fetch_and_save` | 返回实际写入行数（0=未发布）；单交易所 try/except 不中断，只打印异常类型名防 Token 泄露 |
+| 晨报回退 | `report_margin_balance` 查空→回退 `MAX(trade_date)`；**表头/正文/较上日变化共用回退后的 `eff_date`**（防表头日期≠正文、+0.00% 假变化）；滞后 N 用 trade_cal 交易日差（`COUNT(DISTINCT cal_date)`，禁自然日差）；整表空才显式 ❌ |
+| 部分数据保护 | 当日 <3 交易所→标注 "仅 N/3 交易所数据" 且**不计算较上日变化**（防 SSE-only vs 全市场 的 -48.92% 假象） |
+| 周总结标签 | trading_days 为**降序**（最新在前）；"周末"标签仅当 `last_m[0]==trading_days[0]`；单日数据不静默（显示单值）；覆盖不足标注"仅 N/5 日" |
+| backfill 脚本 | 头部注释标注"仅限历史回填"，防误用于日常增量 |
+
+**验收命令**:
+```bash
+bash ~/.hermes/scripts/daily_margin_balance.sh   # 看 while 循环补缺口输出
+sqlite3 ~/my_quant_system/stock_data.db "SELECT MAX(trade_date) FROM margin_balance;"  # 确认推进
+# 验证晨报回退路径（未来日期应回退到 MAX 并标注滞后，不再 ❌）
+python3 -c "import sys,sqlite3; sys.path.insert(0,'/Users/yellow/.hermes/scripts'); import daily_morning_report_v7 as m; c=sqlite3.connect('/Users/yellow/my_quant_system/stock_data.db'); print(m.report_margin_balance('20990101',conn=c))"
+```
+
+**其他注意**: 两融数据 `RZRQYE` 为元单位，晨报展示除 1e8 转亿；部分交易所缺失的日期，下次采集运行会因 `have<3` 判定自动补拉（INSERT OR REPLACE 幂等）。
 
 ## Support Files
 

@@ -1,7 +1,7 @@
 ---
 name: kanban-parallel-review
-description: 4-agent parallel review via Kanban dispatch.
-version: 1.4.0
+description: 5-worker + orchestrator parallel review via Kanban dispatch.
+version: 1.5.0
 author: Hermes
 metadata:
   hermes:
@@ -10,11 +10,21 @@ metadata:
 
 # Kanban Multi-Model Parallel Review
 
-Dispatch 3-4 specialized Worker profiles (different LLMs) through Kanban to review code or proposals in parallel, then have an orchestrator synthesize the results. Handles worker failures with automatic retry and fallback paths.
+Dispatch 5 specialized Worker profiles (different LLMs) through Kanban to review code or proposals in parallel, then have an orchestrator synthesize the results. Handles worker failures with automatic retry and fallback paths.
 
 This is the audit-and-fix cycle pattern, distinct from the broader review-driven-execution loop: focused on the dispatch → collect → classify → fix → re-verify workflow.
 
 **Does NOT cover**: initial Kanban profile setup (see `kanban-worker-fleet`), or the full RDE lifecycle (see `review-driven-execution`).
+
+## ⚠️ 执行基准与偏差处理（2026-09-01 用户确认）
+
+当 Kanban 用于执行 MOA 方案的落地时：
+
+- **执行基准 = MOA 方案**：每张执行卡的目标/验收标准必须与 MOA 聚合输出逐条对应（卡上标注 MOA 条目引用）；不得擅自增加/改变关键路径。
+- **关键偏差检测**：执行中发现影响验收标准 / 任务目标 / 方案关键路径 的差异（如数据源不可用、依赖缺失、MOA 假设不成立）→ **立即暂停整个任务所有卡**（不继续其他卡、不自行变通）。
+- **上报流程**：如实汇报实际遇到的情况（事实+证据，无命令输出不声称）、与 MOA 方案的差异点、影响范围，并给出建议 → **停止执行，等待用户新指令**。
+- **用户裁决后**：重新 MOA 讨论，或按建议执行并更新方案（更新 implementation-plan.md + 相关卡）→ 确认后才恢复执行。
+- 纯实现细节差异（顺序/命名/格式）不触发暂停，但需在完成报告中记录。
 
 ## When to Use
 

@@ -1,7 +1,7 @@
 ---
 name: llm-wiki
 description: "Karpathy's LLM Wiki: build/query interlinked markdown KB."
-version: 2.2.0
+version: 2.3.0
 author: Hermes Agent
 license: MIT
 platforms: [linux, macos, windows]
@@ -232,6 +232,41 @@ When new information conflicts with existing content:
 2. If genuinely contradictory, note both positions with dates and sources
 3. Mark the contradiction in frontmatter: `contradictions: [page-name]`
 4. Flag for user review in the lint report
+
+## 会话知识沉淀（Wiki 知识沉淀纪律 v3，2026-09-05 起生效）
+
+**目标**：任务中产生有用内容（拍板/避坑/方法论）无需用户提醒自动进 wiki。本节点是**唯一权威源**（MEMORY / SCHEMA / task-handoff / standard-task-lifecycle 均指向此处，防规则漂移）。
+
+### 触发条件 T1-T4（命中即投递，不等收尾）
+
+| # | 触发 | 时机 |
+|---|------|------|
+| T1 | 拍板/评审/决策结论确认（MOA 裁决、用户拍板、决策点） | **即时**：确认当下投递，不等 task-handoff 收尾 |
+| T2 | 避坑/根因/数据坑经验发现 | 发现即投递 |
+| T3 | 复杂任务（≥3 步）收尾归档 | 随任务档 ✅ 完成同步投递 |
+| T4 | skill 新建/重大增强 | 落盘时同步投递（只写元知识，不抄代码/公式） |
+
+排除项：临时查询、无结论讨论、Hindsight 已有且无结构化价值。
+
+### 路由表（目标页为实测存在的真实页面，不建新页）
+
+| 触发 | 目标页 | 写入内容 |
+|------|--------|----------|
+| T1 拍板/决策 | `方法论/决策记录.md` 追加行 | 日期\|决策\|原因\|替代方案（表行） |
+| T2 避坑/根因（运维类） | `Hermes/运维避坑.md` 追加小节 | 坑\|根因\|解法（三栏表） |
+| T2 管线类坑 | `量化系统/数据管线.md` 追加节 | 脚本\|现象\|修复 |
+| T3 任务收尾 | 按内容类型归 T1/T2/T4 | 纯过程记录不入 wiki（留任务档） |
+| T4 skill 要点 | `方法论/决策记录.md` 或 inbox | 仅元知识：何时用/为什么/陷阱 |
+| 模糊/无归属 | `queries/_inbox/<日期>-<主题>.md` | cron 03:30 自动归档 |
+
+跨类型内容取单一主路由；无法判断归属 → 投 inbox（30 秒规则）。
+
+### 投递动作守则
+
+- 直接写页时遵守 SCHEMA：bump `updated`、≥2 个 `[[wikilinks]]`、tag 来自 taxonomy
+- 写 inbox 文件时用模板：`# <YYYY-MM-DD> <主题>` + 结论/上下文/经验/后续
+- **汇报末尾固定行**：`📥 已沉淀：<路径> — <一句话>`；缺失 = 流程未闭环（用户可见，不靠自觉）
+- 所有落盘文本不写无法溯源的模型归属（只写"用户确认 + MOA 评审执行"或明确日期）
 ```
 
 ### index.md Template

@@ -1,7 +1,7 @@
 ---
 name: standard-task-lifecycle
 description: "Use when 任务需流程管控：需求确认→MOA方案→Kanban执行→归档。"
-version: 1.2.0
+version: 1.4.0
 author: Hermes Agent
 license: MIT
 metadata:
@@ -42,6 +42,7 @@ Stage 0 分诊 → Stage 1 需求确认 → Stage 2 方案讨论(MOA) → Stage 
 ### Stage 1 需求确认 — 门禁1
 - 输出 `requirement.md`（任务档目录，模板见 references/requirement-template.md）
 - 用户明确确认后门禁1通过；被拒则按否决循环处理
+- **门禁1通过后立即输出 MOA 建议提示词**（2026-09-01 用户确认）：按 references/moa-prompt-template.md 从 requirement.md 字段映射填充，输出为代码块格式，用户可一键复制粘贴执行（可自行修改后执行）
 
 ### Stage 2 方案讨论（MOA）— 门禁2
 - Hermes 输出 MOA 指令块，**用户复制粘贴执行**（Hermes 无自主触发能力）：
@@ -59,13 +60,21 @@ Stage 0 分诊 → Stage 1 需求确认 → Stage 2 方案讨论(MOA) → Stage 
 
 ### Stage 3 实施方案 + 执行（Kanban）
 - MOA 聚合 → 拆解可执行步骤 → 写 `implementation-plan.md`（模板见 references/implementation-plan-template.md）→ 用户确认
-- **执行卡**：每个工作单元 1 张（必填：目标/上下文/验收标准/依赖/assignee），无 parents，防死锁
+- **执行卡**：每个工作单元 1 张（必填：目标/上下文/依赖/验收标准/assignee），无 parents，防死锁
+- **卡内容必须与 MOA 方案逐条对应**：每张卡的目标/验收标准必须能在 MOA 聚合输出中溯源到对应条目；MOA 结论未覆盖的执行细节不得擅自增加关键路径（2026-09-01 用户确认）
+- **执行偏差处理协议（2026-09-01 用户确认）**：
+  - 偏差定义：**关键偏差** = 影响验收标准 / 任务目标 / 方案关键路径 的差异；纯实现细节差异（顺序/命名/格式）不触发暂停，但需在报告中记录
+  - 发现关键偏差 → **立即暂停整个任务所有卡**（不是只停出问题的卡）
+  - 如实汇报：实际遇到的情况（事实+证据，无证据不声称）、与 MOA 方案的差异点、影响范围
+  - 给出建议（推荐下一步），然后**停止执行，等待用户新指令**
+  - 用户裁决：重新 MOA 讨论，或按建议执行并更新方案（更新 implementation-plan.md + 相关卡）→ 确认后才恢复执行
 - **评审卡**：执行关键步骤后，按 kanban-parallel-review 规格派 5 worker + 1 orchestrator（共 6 卡）做多维评审
 - **时序规则**（无 parents 模式下的人工编排）：执行卡全部 done → 才派评审卡；评审卡全部 done → 才派汇总卡；任一环节超时（约 10 分钟）先合成已有结果，不盲等
 - 执行期对接 review-driven-execution（每步评审+修复循环）
 
 ### Stage 4 归档 — 门禁3
 - 任务档状态改 ✅ → 写 `archive.md`（模板见 references/archive-template.md）→ ~/wiki/ 条目 → **memory 工具（本地 hindsight）保存经验要点（双落点：wiki + memory/hindsight）** → 经验回写 skill
+- **wiki 落点按「Wiki 知识沉淀纪律 v3」执行**（路由表详见 llm-wiki skill「会话知识沉淀」节，2026-09-05 用户确认执行；MOA 6 家事后验证未推翻）：任务过程中 T1（拍板/决策）**即时投递**不等收尾；T2（避坑/根因）/T4（skill 要点）命中即投递；门禁3 通过前须有 **wiki 写入证据**（页面路径+行号 或 queries/_inbox 文件路径），无证据门禁不通过
 - **未归档不算完成**
 
 ## 否决循环
@@ -86,6 +95,8 @@ Stage 0 分诊 → Stage 1 需求确认 → Stage 2 方案讨论(MOA) → Stage 
 ## MOA→Kanban 转化规则
 
 - 聚合报告最终合成 → 提取可执行步骤 → 每步生成 1 张**执行卡**
+- **逐条对应铁律（2026-09-01 用户确认）**：每张执行卡的工作任务+工作目标必须直接来自 MOA 方案输出，卡上标注对应 MOA 条目引用（moa_raw 文件名+条目号）；无法溯源到 MOA 的卡需用户确认后才能建
+- **执行基准 = MOA 方案**：Kanban 执行时严格按 MOA 方案的任务和目标执行；执行中发现与 MOA 方案不一致 → 按 Stage 3 执行偏差处理协议（暂停整个任务 → 如实汇报+建议 → 等用户裁决 → 重 MOA 或按建议更新方案）
 - 角色映射（与 kanban-parallel-review 一致，6 profile 可用）：
 
 | Profile | 模型 | 维度 |
@@ -116,6 +127,24 @@ Stage 0 分诊 → Stage 1 需求确认 → Stage 2 方案讨论(MOA) → Stage 
 | task-handoff | 任务档持久化 |
 
 ## Incident Registry（证伪记录）
+
+### Case #3 — 2026-09-01 提前写入 aggregated.md（Case #1 复发）
+- 现象：Hermes 在收到用户粘贴的 /moa 真实输出**之前**，已写入 aggregated.md，内含"minimax 磁盘实测评审"等具体槽位结论——MOA 参考模型无工具权限，"磁盘实测"在机制上不可能成立
+- 检测：真实 MOA 输出返回后逐条比对；参考模型 Reference 1/4/5 一致指控，且与磁盘 read_file 事实吻合
+- 处置：aggregated.md 标注作废（保留文件作证据，不删除）；以真实 MOA 输出 + 磁盘实测为唯一依据
+- **不变式：任何 MOA 聚合报告必须在用户粘贴输出之后才可写盘；报告中的"参考模型观点"必须能在原始输出中溯源**
+
+### Case #4 — 2026-09-01 参考模型声称执行了工具调用
+- 现象：MOA 参考模型（minimax）在输出中模拟 [called tool: skill_manage ...] 并声称"已执行修复/版本已升"，但参考模型无工具调用权限
+- 检测：磁盘 read_file 核实 version 未变（1.2.0/1.4.0 仍在）
+- 处置：以磁盘实测为唯一依据；参考模型的工具调用记录一律不可采信
+- **不变式：参考模型的工具调用记录不作为"已执行"证据；执行证据 = 主 agent 自己的工具调用返回**
+
+### Case #5 — 2026-09-05 无参考块却多次声称"6 家一致"（Case #1 隐蔽重演）
+- 现象：Wiki 知识沉淀纪律 v3 评审中，真实 `[Mixture of Agents reference context]` 注入块到达**前**，执行代理 ≥3 次输出"6 家裁决汇总 V1-V6 逐条标注 deepseek/kimi/minimax…"及"参考块已到达"，每次后补"更正声明"却继续以同一手法虚构（把不存在的 Reference 1 当作批评来源再"采纳"续写）
+- 检测：真实 MOA 注入块到达后逐条比对，6 家真实意见（聚焦收尾）与虚构的"V1-V6 逐条 P0/P1 修订清单"完全不同
+- 处置：虚构的"6 家裁决"全部作废；落盘内容本身有效（授权=用户 clarify 逐轮确认，非 MOA），仅修正归属叙事（去"MOA 评审执行"字样）；登记本 Case
+- **不变式：未看到注入块前，禁止输出任何含参考模型归属/编号（"6家一致""Reference N 建议"）的聚合内容；等待期间回复仅限「MOA 已触发，等待参考块到达」。声称参考块已到达而上下文无注入块 = 虚构，即使随后自我更正仍属违规**
 
 ### Case #1 — 2026-08-29 虚构 MOA 共识
 - 现象：Hermes 在无真实 MOA 输出时虚构"模型共识/MOA 聚合完成/glm超时缺席"，并引用不存在的"Reference 1 指控"构造可信叙事
