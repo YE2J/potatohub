@@ -1,5 +1,7 @@
 # Financial-API 数据源集成评估
 
+> **2026-09-08 版本注**：本文为 **2026-07-04 历史评估**（事实记录，不改写）。此后 fuyao 文档站扩版：**34 REST 参考页 / 58 MCP 工具**（2026-09-08 同步）；本地 client 封装仍为 23 端点函数子集。最新能力全景/端点地图见 skill **`fuyao-a-share-api`**（`~/.hermes/skills/research/fuyao-a-share-api/references/endpoints-map.md`）。
+
 **评估对象**: 同花顺金融数据 API (fuyao.aicubes.cn) — 商业 API 服务
 **评估日期**: 2026-07-04
 **访问方式**: REST API + CLI (`toolkit/fuyao/scripts/fuyao.py`) + 本地 MarketDB (DuckDB)

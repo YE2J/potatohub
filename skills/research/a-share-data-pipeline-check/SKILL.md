@@ -28,21 +28,31 @@ Always query ALL sources and build a freshness matrix.
 | `index_daily` | 指数日线-Tushare增量 | `daily_index_tushare.sh` | 18:15 交易日 | local |
 | `valuation_results` | (weekly_valuation agent) | — | Sat ~09:00 | local |
 
-## Fuyao Special-Data Tables (Weekly Snapshot)
+## Fuyao Special-Data Tables (同花顺金融数据 API = fuyao.aicubes.cn)
 
-Five additional tables from the Financial-API (fuyao) special-data endpoints supplement the core pipeline. These are **not on cron** — run manually or on-demand:
+**Terminology gate:** when the user says「同花顺金融数据 API」they mean **fuyao.aicubes.cn** (同花顺官方数据服务, repo `~/my_quant_system/financial-api/`), NOT the Tushare `moneyflow_ind_ths/cnt_ths` 板块资金流口径. Both coexist; confirm which one is meant before diagnosing or the whole investigation targets the wrong source.
 
-| Table | Endpoint | What It Captures |
-|-------|----------|-----------------|
-| `limit_up_pool` | `limit-up-pool` | 涨停股票池 (daily snapshot) |
-| `limit_up_ladder` | `limit-up-ladder` | 连板天梯 (30-day rolling matrix) |
-| `daily_anomaly` | `anomaly-analysis-list` | 个股异动 (same-day only) |
-| `dragon_tiger_daily` | `dragon-tiger-list` | 龙虎榜 (daily) |
-| `hot_stock_daily` | `hot-stock-list` | 市场热榜 (day/hour) |
+Seven tables from the Financial-API (fuyao) special-data endpoints. Each has a **daily cron wrapper** (`~/.hermes/scripts/daily_*_fuyao.sh` → `import_financial_api.py --table <t> --date <YYYY-MM-DD>`, venv_cron Python, token from `~/.hermes/.env.fuyao`):
 
-Collection script: `~/my_quant_system/scripts/import_financial_api.py`
-Requires `FUYAO_TOKEN` env var. Uses pyenv Python (Hermes venv urllib3 incompatibility).
-Full schema and behavior: [references/fuyao-special-data-ingestion.md](references/fuyao-special-data-ingestion.md)
+| Table | Cron (name / wrapper) | Schedule | Endpoint |
+|-------|-----------------------|----------|----------|
+| `limit_up_pool` | 涨跌停池-FinancialAPI / `daily_limit_up_fuyao.sh` | 交易日 16:00 | `limit-up-pool` |
+| `limit_up_ladder` | 连板天梯-FinancialAPI / `daily_limit_up_ladder.sh` | 交易日 16:05 | `limit-up-ladder` |
+| `limit_down_pool` | 炸板跌停池-FinancialAPI / `daily_limit_break_down_fuyao.sh` | 交易日 16:10 | `limit-down-pool` |
+| `limit_break_pool` | 炸板跌停池-FinancialAPI / `daily_limit_break_down_fuyao.sh` | 交易日 16:10 | `limit-break-pool` |
+| `daily_anomaly` | 个股异动-FinancialAPI / `daily_anomaly_fuyao.sh` | 交易日 15:30 | `anomaly-analysis-list` |
+| `dragon_tiger_daily` | 龙虎榜-FinancialAPI / `daily_dragon_tiger_fuyao.sh` | 交易日 17:00 | `dragon-tiger-list` |
+| `hot_stock_daily` | 市场热榜-FinancialAPI / `daily_hot_stock_fuyao.sh` | 交易日 22:00 | `hot-stock-list` |
+
+**当日 0 行 ≠ 端点故障或非交易日**（判别法）：①历史日回查（已知有数据的日期逐日拉，如跌停池 9/7=2、9/4=9、9/2=8）②兄弟端点对照（同日涨停池有 N 行证明日期语义对）。跌停/炸板这类情绪池当日真实可为 0（无跌停/无炸板是合法结果），别把合法空日当故障排查。
+
+**dragon-tiger-list 三榜不同构（实测）**：all/org 榜返回股级 `stock_items`（org 含 org_net_value/org_buy_num/org_sell_num 机构字段），`hot_money_items` 恒为空；hot_money 榜反之 `stock_items` 空、`hot_money_items`=[{name, buying, rows:[游资×股]}]。同股同榜同日可多行且无记录 ID（仅 range_days 等不同）→ 该数据不能按 (trade_date, thscode) 唯一键落库否则静默丢行；逐日快照用 DELETE(trade_date, board_type)+全量 INSERT 幂等。三榜集合关系：org⊂all、hot_money 个股⊂all、org∩hot_money 部分重叠。
+
+**API integration facts (verified 2026-09-08):** Base URL `https://fuyao.aicubes.cn`; auth header is **`X-api-key: <token>`** — `Authorization: Bearer` is rejected with `code 2003 Missing X-api-key`; token in `~/.hermes/.env.fuyao` (`FUYAO_TOKEN`, alias `API_KEY`). HTTP **429 "request limit exceeded"** is transient rate limiting — `fuyao_client.py _get` auto-retries with backoff (RETRY_CODES {4001,5001,5002,5003}, max 3, base 1s), so a 429 line in a cron log followed by a write is healthy, not a failure.
+
+**Cron `ok` ≠ rows written**: verify fuyao health by reading the cron output md (`~/.hermes/cron/output/<job_id>/<date>.md`) for the trailing write count (e.g. `✅ 写入 231 条`) or by DB `MAX(trade_date)` / row count per table, not by `last_status`.
+
+Full schema, per-endpoint CLI args, and historical issues: [references/fuyao-special-data-ingestion.md](references/fuyao-special-data-ingestion.md)
 
 ## Database Location
 
@@ -575,7 +585,7 @@ df['date_key'] = df['date'].str.replace(
 | File | Covers |
 |------|--------|
 | `references/pipeline-behavior-history.md` | Historical behavior of the pipeline across past runs |
-| `references/fuyao-special-data-ingestion.md` | Fuyao special-data tables (limit_up, dragon_tiger, hot_stock, etc.) |
+| `references/fuyao-special-data-ingestion.md` | Fuyao special-data tables (7 tables: limit_up/down/break pools, ladder, anomaly, dragon_tiger, hot_stock) + 4-layer recipe for adding a new endpoint |
 | `references/tushare-kline-pipeline-code-review.md` | **Code-level review checklist** for `qfq_tushare_daily.py`: incremental logic gap detection, batch retry patterns, date format consistency, API rate limiting, stock code filtering, logging pitfalls |
 
 ## P1 Data Facility — 7 New Analytical Tables
@@ -658,6 +668,16 @@ Two THS-based sector moneyflow tables supplement the DC `moneyflow_daily` table:
 | Delivery | `local` |
 
 ⚠️ **Historic timing risk (now fixed):** An earlier configuration ran this at `0 16` (too early for THS data). The current schedule at **18:45** gives 45 min after the Tushare kline pipeline (18:00) and aligns with the THS moneyflow readiness window (~17:00–19:00). Reasonable but still early in the readiness window — if data is missing, the script exits silently and re-runs the next day.
+
+### ⚠️ today_is_trade_day() Python type-comparison bug (permanent one-day lag)
+
+`today_is_trade_day()` in `daily_sector_moneyflow.py` (and its DC twin `daily_sector_moneyflow_dc.py`) compares `row[0] == '1'` against `trade_cal.is_open`, which stores **INTEGER 1**. `int == str` is always False, so the helper silently returns False on every confirmed trade day → `get_target_date()` always picks the **previous** trade day → sector moneyflow tables land **permanently one trade day late** while cron reports `ok` and logs show a clean run.
+
+Diagnostic signature in the cron output md: `自动检测目标日期=<前一交易日> (today=<今天>)` printed on a confirmed trade day (verify with `SELECT cal_date, is_open FROM trade_cal WHERE exchange='SSE' AND cal_date=<today>`).
+
+Cross-source tell: when two INDEPENDENT providers (THS + DC sector moneyflow) show the SAME one-day lag, the fault is in shared calendar/target-date logic, NOT the providers. Probe the upstream directly (`pro.moneyflow_ind_ths(trade_date=...)` / `moneyflow_cnt_ths(...)` returning ~90/~387 rows for a recent trade day proves the API is healthy) before blaming the data source.
+
+Fix: compare like-for-like (`int(row[0]) == 1`) in both scripts, then backfill the missing day with `--date <YYYYMMDD>` per script. Note SQLite numeric-coerces `is_open='1'` inside SQL, so `get_prev_trade_day()` keeps working while the Python-side check is broken — the two lookups can disagree, which is exactly how a silently-wrong helper hides next to a working one.
 
 ### `get_prev_trade_day` — Local trade_cal Pattern
 
@@ -743,6 +763,7 @@ Common patterns to look for in Python ETL scripts:
 - `df.to_sql(..., if_exists='append')` on tables with PRIMARY KEY — will crash on duplicates
 - `timedelta(days=1)` for date calculation — use `trade_cal` or API to find the previous **trading** day
 - Hardcoded `yesterday` logic — breaks around weekends and holidays
+- **Python reads INTEGER SQLite columns then compares against string literals** (`row[0] == '1'`) — `int == str` is silently always False, no exception. In-SQL comparisons (`WHERE is_open='1'`) DO match via SQLite coercion, so a script can ship a permanently-broken Python helper next to working SQL lookups. Audit with `SELECT typeof(col)` and compare like-for-like (`int(row[0]) == 1`)
 - No `INSERT OR REPLACE` / `UPSERT` pattern for incremental data
 
 ### Phase 6: Data Coverage Analysis
@@ -755,7 +776,7 @@ Common patterns to look for in Python ETL scripts:
 | File | Covers |
 |------|--------|
 | `references/pipeline-behavior-history.md` | Historical behavior of the pipeline across past runs |
-| `references/fuyao-special-data-ingestion.md` | Fuyao special-data tables (limit_up, dragon_tiger, hot_stock, etc.) |
+| `references/fuyao-special-data-ingestion.md` | Fuyao special-data tables (7 tables: limit_up/down/break pools, ladder, anomaly, dragon_tiger, hot_stock) + 4-layer recipe for adding a new endpoint |
 | `references/tushare-kline-pipeline-code-review.md` | Code-level review checklist for qfq_tushare_daily.py |
 | `references/backfill-procedures.md` | **Manual backfill after mass pipeline failure**: full per-table command matrix (kline/moneyflow/index/sector/margin/engines), date formats, T+1 margin caveat, engine re-run requirement, post-migration leftover cleanup, 2026-08-01 case study |
 | `references/p1-facility-audit.md` | Complete P1 data facility audit report |

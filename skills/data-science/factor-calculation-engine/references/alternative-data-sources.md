@@ -74,6 +74,8 @@ cd ~/my_quant_system/financial-api
 export FUYAO_TOKEN=xxx && ~/.pyenv/versions/3.11.11/bin/python bootstrap.py --api-only
 ```
 
+> **2026-09-08 更新注**：fuyao 文档站已扩版至 **34 REST 参考页 / 58 MCP 工具**（2026-09-08，仓库与本地镜像此前停在 Jul 4 的 23/22）。新增可用端点：基金资料/持仓/业绩/经理/净值（`/api/fund/*`）、财务指标五类（`financials/indicators` 已含）、**估值快照**（`/api/a-share/valuations/snapshot`）、**集合竞价**（`/api/a-share/auction/{snapshot,short-term-benchmark}`）、**炸板池/跌停池**（`special-data/limit-break-pool`、`special-data/limit-down-pool`）、龙虎榜分榜（`dragon-tiger-list?board_type=org|hot_money`）。权威端点地图/鉴权/限流纪律见 skill **`fuyao-a-share-api`**（`~/.hermes/skills/research/fuyao-a-share-api/references/endpoints-map.md`）。注意：本文件「基本用法」示例的 `~/.pyenv/...python` 路径为历史写法，新 cron 路径已改 `~/.hermes/venv_cron/bin/python3`。
+
 ---
 
 ## a-share-skill (by shouldnotappearcalm)

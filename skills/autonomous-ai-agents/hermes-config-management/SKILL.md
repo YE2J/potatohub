@@ -14,7 +14,8 @@ tags: [hermes, config, persona, personality, soul]
 | 文件 | 可写方式 | 说明 |
 |:-----|:---------|:-----|
 | `~/.hermes/SOUL.md` | `write_file` 直接覆盖 ✅ | persona 文件，**不受保护**；但头部可能有历史 UTF-16 编码乱码残留，`read_file` 可能报 Binary |
-| `~/.hermes/config.yaml` | **仅 `hermes config` CLI** ⛔ | `patch`/`write_file` 会被拒绝：`Refusing to write to Hermes config file... use 'hermes config' instead` |
+| `~/.hermes/config.yaml`（**顶层**） | **仅 `hermes config` CLI** ⛔ | `patch`/`write_file` 被拒：`Refusing to write to Hermes config file... use 'hermes config' instead` |
+| `~/.hermes/profiles/<name>/config.yaml`（**profile 级**） | `patch` 直接改 ✅ | 不在顶层保护范围内；改前备份、改后 `hermes -p <name> config get <key>` 验证。只用文本级 patch，`yaml.dump` 回写会重排/破坏整份文件 |
 
 ## SOUL.md（persona 文件）
 
@@ -119,7 +120,56 @@ hermes status | grep -iE 'Firecrawl|Nous Portal'
 - login 是 one-shot onboarding，可能「pick a model, set Nous as provider」——登录后核对 `hermes config get model.provider`（本机原为 deepseek）；只加凭据不想动模型用 `hermes auth add nous --type oauth`
 - 配置完成前需要联网的任务用 curl 降级（GitHub API、公开接口），示例见 `references/web-tools-firecrawl.md`
 
+## 多 Agent 模型/推理强度清单审计（只读盘点）
+
+用户问「所有 agent 用的什么模型版本 / 推理强度」时，一次性盘点 5 层，漏层就是漏答：
+
+| 层 | 读取方式 | 说明 |
+|:---|:---------|:-----|
+| profile 主模型 | `hermes profile list` + `hermes -p <p> config get model.default` | 7 个 profile：default/orchestrator/worker-glm/kimi/minimax/qwen/xiaomi |
+| 推理强度 | `hermes -p <p> config get agent.reasoning_effort` | 另查 `delegation.reasoning_effort`（子代理档位，常为 high） |
+| MOA 参考层+聚合器 | `hermes moa list` | 参考模型与聚合器可能同源，需提示同质化 |
+| auxiliary | `hermes config get auxiliary.vision.model` 等 | 视觉/压缩等旁路模型，worker profile 多为 `auto` |
+| 休眠配置 | 读 profile config.yaml 的 `moa.presets` + `hermes status` | 指向未配置 key 的 preset（如 openrouter）属死配置，必须标出 |
+
+### 🚨 `HERMES_PROFILE=x hermes config get` 不生效（本会话踩过）
+
+`hermes config get <key>` **永远读 default profile**，环境变量方式赋值不生效——会把所有 profile 都显示成 default 的值（如全部 `medium` / `deepseek-v4-flash`），且不报错，静默产出错误清单。
+
+- 正确：`hermes -p <profile> config get <key>`（逐 profile 一条命令）
+- 校验：若多个 profile 输出完全相同，先怀疑读错了 profile，`hermes profile list` 交叉核对
+
+### 配置值与「上游是否真正支持」分开报
+
+`agent.reasoning_effort` 只是配置层正确，厂商线级支持因模型家族而异（GLM 原生 effort 仅 5.2/5.3、MiniMax 插件只映射 adaptive/disabled、xiaomi/alibaba-coding-plan 插件无 reasoning 映射）。审计时必须分列「配置值」与「线级支持」，未实测的直接标 ⚠️，不要把配置值当成生效结论。判定依据与命令见 `references/model-change-workflow.md` 的「推理强度线级支持核对」。
+
+### 汇报格式（用户偏好）
+
+表格优先，且分三块：①主力 agent（profile 级）②派生调用层（MOA/子代理/辅助）③⚠️ 不一致与风险清单（每条带证据）。末尾给选项表含「我的倾向」列 + 声明默认动作（"无回复即按 ① 执行"），只读盘点**不动配置**，改不改由用户点选。
+
+## 配置变更执行与验证（改 profile / 人格描述的统一节奏）
+
+1. **备份**：要改的每一份 config 和将改写的文档都先复制到带时间戳目录（`~/.hermes/backups/<date>_<用途>/`），并在汇报里给出回滚命令。
+2. **改**：profile 级 config 用 `patch`（带上下文锚点，避免误伤重复段）；顶层 config 走 `hermes config` CLI 或终端 python 定点替换（`assert count==1` 防误改）。
+3. **验证三层，缺一层不算完成**：
+   - 生效值：`hermes -p <name> config get <嵌套路径>`
+   - 未破坏运行：一次性冒烟 `hermes -p <name> -z "只回复：可用"` → 看到字面回复 + exit=0 才说明该 profile 仍能加载配置
+   - 连带文件：grep 旧值确认清零（只允许出现在 `cache/`、`backups/`）
+   - ⚠️ macOS 没有 `timeout` 命令，别在 shell 里包 `timeout`，用工具侧 timeout 参数控时长
+4. **汇报**：改了哪些文件（diff 摘要）+ 验证命令的**真实输出** + 备份路径与回滚命令；未实测的部分标 ⚠️，不得写成「已生效」。
+
+### 🚨 别对整个 skills 树做无过滤 grep
+`grep -rn <kw> ~/.hermes/skills` 会扫到 `~/.hermes/skills/.hub/index-cache/hermes-index.json`（数十 MB 的 skill hub 索引），一次可产出数十 MB 输出、瞬间吃光上下文。
+- 正确：明确列出目标文件（如 `~/.hermes/SOUL.md ~/.hermes/profiles/*/SOUL.md`），或加 `--include='*.md' --include='*.yaml'` 并排除 `.hub/index-cache/`
+- 大目录搜索前先 `ls` 看体量、限定 include，再决定是否 grep
+
+### 修正「文档/人格与实际配置不符」的分寸
+盘点发现描述失真时先分类，再动手：
+- **当前状态声明**（如「复杂任务委托 v4-pro/high」「effort=low」）→ 直接改成实测值，并标注实测日期，让读者一眼知道这是核对过的现值。
+- **历史坑位记录**（skill 里当年排查 401/换 provider 时引用的旧值）→ 保留原教训，只加一行「当前实测值见 <skill/reference>」的指针。把历史记录改写成现值＝删掉教训。
+
 ## 参考
 
 - `references/config-keys.md` — 本机 Hermes 配置关键路径速查
+- `references/model-change-workflow.md` — 模型变更 4 类位置 + 全 Agent 模型/推理强度盘点（含逐 profile 读取命令、推理强度线级支持核对表）
 - `references/web-tools-firecrawl.md` — Web 工具(Firecrawl)诊断/修复全流程与 curl 降级示例

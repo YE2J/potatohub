@@ -93,6 +93,89 @@ min_dt, max_dt, cnt = cur.fetchone()
 4. 每次请求间 `time.sleep(0.35)` 避免限流
 5. 写入后重新检查 MIN(date)/MAX(date)/COUNT(*)
 
+---
+
+## 大表面板工程（百万行级 SQLite：因子 × 收益 × 控制变量）
+
+当 IC 检验从「几只自选股」扩到「全市场 800 万行 × 7 年」时，下面四步是能跑通与卡死的分界线。
+
+### 滚窗因子的就绪判定必须校验窗口「实际样本数」，不能只看索引位置
+
+**最高频的因子实现缺陷。** 用序列索引判窗口满额（`if i >= 60:`）在**数据起点晚于因子序列起点**时静默失效：因子序列从 A 日起算、价格/辅表只从 B 日（B > A）起 —— 索引早就够 60，但窗口内实际只有 1~40 个数据点，于是 warmup 期批量产出伪信号（实测一次 37,727 行，占非零信号 1.39%，会被下游事件研究当成真信号入样）。
+
+```python
+window_full = (len(win_px) >= WINDOW_PRICE          # 价格窗实际满额
+               and len(win_lvl) >= WINDOW_RATIO     # 因子窗实际满额
+               and i >= MIN_IDX)                     # 索引满额（三者缺一不可）
+```
+
+配套纪律：
+- 掩码规则写进脚本注释 + 报告，并**显式写出校验式与预期值**（如「保留条件：i >= 179 AND len(win_px) >= 60；预期 2020-04 前信号数 = 0」）——评审方要据此独立复算。
+- 改完必须回查**边界日期**（`MIN(trade_date) FROM ... WHERE signal != 0` 应等于数据成熟日），不要只对比总行数。
+- 同理，输出因子的「最早有效日」应在报告里与收益端起点对齐；两端起点错配（因子 2019-01 起、价格 2020-01 起）会让整段时间静默跳过，跳过次数要计数并写进日志，否则被当成数据缺失。
+
+### 避免日期范围 JOIN（会卡死）
+
+`ON a.trade_date >= b.in_date AND (b.out_date IS NULL OR a.trade_date < b.out_date)` 这种范围连接，SQLite 走嵌套循环，800 万行规模直接卡死（本次跑了 3+ 分钟无输出被手动终止）。
+
+**修复：先物化「每实体唯一归属」映射表，再做等值 JOIN** —— 同一份数据 9 秒完成：
+
+```sql
+CREATE TABLE tmp_stock_attr AS
+SELECT code6, attr FROM (
+  SELECT substr(ts_code,1,6) AS code6, attr, in_date, out_date,
+         ROW_NUMBER() OVER (PARTITION BY substr(ts_code,1,6)
+                            ORDER BY (CASE WHEN out_date IS NULL OR out_date='' THEN 0 ELSE 1 END),
+                                     in_date DESC) AS rn
+  FROM dim_attr) WHERE rn = 1;
+```
+
+代价：失去历史归属变更回溯（行业/分类变更罕见，可接受）——**必须在报告里注明这一局限**，不要当成精确动态归属。
+
+### JOIN 键口径先对齐（带后缀 vs 纯 6 位）
+
+dim 类表常存 `000001.SZ`，而因子/行情面板存纯 6 位 `000001`。直接 JOIN 静默丢行（表现为覆盖率莫名偏低）。统一用 `substr(ts_code,1,6)` 或先建 6 位映射列，并在报告里写明用了哪种口径。
+
+### forward 收益用 SQL 窗口函数一次算出
+
+```sql
+INSERT INTO v2_fwd_ret
+SELECT stock_code, trade_date, close, rev_20, mom_60_20, total_mv,
+       LEAD(close,20) OVER w / NULLIF(close,0) - 1.0,
+       LEAD(close,60) OVER w / NULLIF(close,0) - 1.0
+FROM factor_cross_section
+WINDOW w AS (PARTITION BY stock_code ORDER BY trade_date);
+```
+
+`NULLIF(close,0)` 防除零；`LEAD` 天然只在**同一股票**序列内前看，不会跨股票串味。
+
+### Spearman 不依赖 scipy
+
+`Series.corr(method='spearman')` 在缺 scipy 的环境报 `ModuleNotFoundError: No module named 'scipy'`。
+自实现（rank 后取 Pearson，结果等价）：
+
+```python
+import numpy as np, pandas as pd
+def spearman(a, b):
+    ra, rb = pd.Series(a).rank(), pd.Series(b).rank()
+    if len(ra) < 3 or ra.std() == 0 or rb.std() == 0:
+        return np.nan          # 常量列/样本过少直接判无效，避免 NaN 污染
+    return ra.corr(rb)
+```
+
+### 行业中性化（行业 × 截面内标准化）
+
+```python
+g = df.groupby(["trade_date", "industry"])["factor"]
+cnt = g.transform("count")
+df = df[cnt >= 5]                       # 当日行业内样本 <5 只不参与，避免噪声均值
+mu, sd = g.transform("mean"), g.transform("std")
+df["f_neutral"] = np.where(sd > 0, (df["factor"] - mu) / sd, 0.0)
+```
+
+- 无行业映射的股票**剔除出中性化/分组/IC 样本**，单独报告覆盖率——不要塞进"其他"桶（会污染行业均值）。
+- 先跑一次 `|ρ(因子, rev_20)|` 预检：>0.4 走预注册的残差因子路径，不要在主检验里临场决定。
+
 ## 同花顺数据校准方法
 
 ### 校准流程

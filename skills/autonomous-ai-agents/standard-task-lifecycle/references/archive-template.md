@@ -19,5 +19,5 @@
 
 ## 归档位置（双落点）
 - 任务档：~/.hermes/tasks/xxx.md
-- wiki：~/wiki/workflows/xxx.md
+- wiki：~/.hermes/wiki/retrospectives/<YYYYMMDD-主题>.md（任务回顾，经 v4 路由投递）
 - memory（本地 hindsight）要点：（简述存入 memory 工具的关键经验条目）

@@ -228,7 +228,27 @@ Layer 3: Valuation Gate (估值门控)
 - **Data freshness check**: A table with 1000 rows `WHERE date = MAX(date)` being only 3 days old means insufficient history. Always check `MIN/MAX(date)`.
 - **Data gap reference file**: See `references/data-gap-discovery.md` for the full gap analysis methodology and the specific gaps found in this session (ths_member missing, sector moneyflow history insufficient, etc.).
 
-## Synthesis & Reporting Pattern
+### Kanban card creation with long Chinese bodies
+
+Shell inline `--body "长中文…"` breaks with `'utf-8' codec can't encode characters…surrogates not allowed` when the string passes through shell variable expansion (5 consecutive failures observed). The CLI has no `--body-file`. Create cards via Python subprocess list-args instead: `subprocess.run(["hermes","kanban","create",title,"--assignee",worker,"--body",body], capture_output=True, text=True, cwd=...)`. Extract task ids from the returned JSON or from a later `hermes kanban list`.
+
+### Read worker output BEFORE synthesis; verify worker claims against disk
+
+- `kanban show <id>`'s `result` field is usually empty — the full review lives in run summary (possibly truncated) and in `attachments/<task_id>/*.md`. Check `kanban show --json` → `latest_summary`, then the Events `attached {filename,size}` line, then `cp ~/.hermes/kanban/attachments/<task_id>/<file> <project dir>/` to archive.
+- Worker P0/P1 claims can rest on wrong premises (observed: a data worker reported 4×P0, ALL rejected — searched the wrong directory and declared a script "missing", mistook a function-local variable for a "missing column", and treated planned-but-not-yet-executed work as a "design flaw"). Before creating the orchestrator card, run real commands to verify each P0/P1 (file existence / is the field an internal variable / is the work already planned in the design), and write your corrections into the orchestrator body as "主 Agent 实测校正，勿盲信 worker 自报" so wrong P0s do not block a freeze.
+- **执行成果评审的“视角错位”判定**：worker 用“当前代码/数据状态”去审“设计文档”时，设计稿里写明“待执行”的项（尚未回填、尚未扩列、尚未实现的列/窗口）会被当成 P0 缺陷。判定方法：查该事项是否已在设计稿的执行分工章节列为待办 → 是则降为执行项，不入 P0。
+- **汇总时顺手抓 worker 的量纲/单位笔误**（实测：3.7 分钟写成 3.7 小时，差 60×）——这类错在交叉汇总时一眼可见，写进结论避免下游按错数量级做计划。
+
+### 远程协作方要独立复核时，导“复核三件套”而非只给结论
+
+当协作方（如云端 Agent）访问不到你的本地 DB（`/Users/...` 不可达、无法 sqlite3 复跑）时，光给结论文字无法验收。导出到双方共享目录（`sync/` 或 `docs/`）：
+1. **结果表全表 CSV**（如 `sqlite3 -header -csv <db> "SELECT * FROM <结果表>;" > 复核_<表名>.csv`）
+2. **关键分布计数**（分组计数、屏蔽前/后异常计数、最早/最晚有效日、日覆盖率）
+3. **面板行数/交易日数 + 原始 SQL 全文**（把实际执行的 SQL 一并写进文本，对方才能逐字复算而不是猜你的分母）
+
+先把材料同步过去再声称“已交付”，否则对方只能回“看不到、无法复核”。
+
+### Synthesis & Reporting Pattern
 
 After all 4 agents return, synthesize in this order:
 
@@ -242,6 +262,16 @@ For each disagreement:
 - **Dig into the root cause** — often disagreements come from different assumptions about the same thing (e.g., "valuation is urgent" assumes `fina_indicator` data source, but a lighter `daily_basic` alternative resolves it)
 - Propose a resolution that reconciles both positions
 - Sometimes the disagreement reveals a **third path** neither considered
+
+#### 先判「口径分歧」还是「事实分歧」——两派总评相反时
+
+两派对同一对象给出相反总评（如「放行」vs「不可信」）时，先核对各自评的是不是**同一条子链**。若各自评的是正交子链（如「因子构建正确性」vs「配套数据/Universe 就绪度」），结论并不矛盾 → 正解是**按依赖拆段放行**（哪一段依赖哪条子链就归哪段，如「检验主线立即启动 / 经济性与事件研究待修复后启动」），而不是二选一。措辞过重（"整体不可信"）与过宽（"放行"）都会误导决策，仲裁必须把两派各自的**真实边界**写出来。
+
+同理，**同一数字两方不一致先查口径**：如触发率「86.34%」与「8.51%」分别是日覆盖口径与行占比口径，两者皆真。仲裁时逐项标注口径来源（分母是什么、按行还是按日），不要把口径差当矛盾上报。
+
+#### 汇总产物的交付位置
+
+orchestrator 的完整裁决附件生成在 `~/.hermes/kanban/attachments/<task_id>/`，**协作方看不见**。必须 cp 到你与对方共享的目录（如 `~/Coze/Drive/<项目>/`），否则对方会 find 不到并判定为「声称已存档但实际没落盘」，要求你补写重交。先 cp 再 archive（归档会清理 workspace）。
 
 ### 3. Structured Roadmap
 Organize into phases:

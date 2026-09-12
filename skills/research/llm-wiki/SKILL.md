@@ -37,7 +37,7 @@ Use this skill when the user:
 
 **Location:** Set via `WIKI_PATH` environment variable (e.g. in `${HERMES_HOME:-~/.hermes}/.env`).
 
-If unset, defaults to `~/wiki`.
+If unset, defaults to `~/wiki`. **本机（Hermes default profile）实际主库为 `~/.hermes/wiki/`，WIKI_PATH 未设置——所有会话沉淀一律以「会话知识沉淀」节的权威路径为准，勿按默认值 `~/wiki` 投递。**
 
 ```bash
 WIKI="${WIKI_PATH:-$HOME/wiki}"
@@ -233,7 +233,9 @@ When new information conflicts with existing content:
 3. Mark the contradiction in frontmatter: `contradictions: [page-name]`
 4. Flag for user review in the lint report
 
-## 会话知识沉淀（Wiki 知识沉淀纪律 v3，2026-09-05 起生效）
+## 会话知识沉淀（Wiki 知识沉淀纪律 v4，2026-09-08 起生效）
+
+> ⚠️ **权威库路径 = `~/.hermes/wiki/`**（cron「Wiki 增量整理」与 SCHEMA.md 所在）。WIKI_PATH env 未设置时**勿用**本 skill 默认 `~/wiki` —— 那是遗留轻量回顾库（09-04 前产物；曾致 2026-09-08 fuyao 内容错投事故）。投递前先 `ls ~/.hermes/wiki/` 确认目标目录/页面存在。
 
 **目标**：任务中产生有用内容（拍板/避坑/方法论）无需用户提醒自动进 wiki。本节点是**唯一权威源**（MEMORY / SCHEMA / task-handoff / standard-task-lifecycle 均指向此处，防规则漂移）。
 
@@ -248,23 +250,26 @@ When new information conflicts with existing content:
 
 排除项：临时查询、无结论讨论、Hindsight 已有且无结构化价值。
 
-### 路由表（目标页为实测存在的真实页面，不建新页）
+### 路由表（目标页均为主库 ~/.hermes/wiki 下实测存在的真实页面，不建新页）
 
-| 触发 | 目标页 | 写入内容 |
-|------|--------|----------|
+| 触发 | 目标页（相对 `~/.hermes/wiki/`） | 写入内容 |
+|------|-------------------------------|----------|
 | T1 拍板/决策 | `方法论/决策记录.md` 追加行 | 日期\|决策\|原因\|替代方案（表行） |
-| T2 避坑/根因（运维类） | `Hermes/运维避坑.md` 追加小节 | 坑\|根因\|解法（三栏表） |
-| T2 管线类坑 | `量化系统/数据管线.md` 追加节 | 脚本\|现象\|修复 |
-| T3 任务收尾 | 按内容类型归 T1/T2/T4 | 纯过程记录不入 wiki（留任务档） |
+| T2 避坑/根因（运维/API 类） | `Hermes/运维避坑.md` 追加小节 | 坑\|根因\|解法（三栏表）；带 frontmatter 页须 bump `updated` |
+| T2 管线类坑 | `量化系统/数据管线.md` 追加「已知问题」行或小节 | 脚本\|现象\|修复 |
+| T3 任务收尾 | 长篇任务回顾 → `retrospectives/<YYYYMMDD>-<slug>.md` 新建（带 frontmatter，正文保持原回顾格式）；短内容按 T1/T2/T4 归口 | 纯过程记录不入 wiki（留任务档） |
 | T4 skill 要点 | `方法论/决策记录.md` 或 inbox | 仅元知识：何时用/为什么/陷阱 |
-| 模糊/无归属 | `queries/_inbox/<日期>-<主题>.md` | cron 03:30 自动归档 |
+| 模糊/无归属 | `queries/_inbox/<日期>-<主题>.md` | cron 03:30 自动归档（补 frontmatter/wikilinks） |
+
+高频日切片页（每日盘面/资金流追踪/估值动态/Hermes 日报归档）由 wiki cron 03:30 生成，主 Agent **不写**切片页。
 
 跨类型内容取单一主路由；无法判断归属 → 投 inbox（30 秒规则）。
 
 ### 投递动作守则
 
-- 直接写页时遵守 SCHEMA：bump `updated`、≥2 个 `[[wikilinks]]`、tag 来自 taxonomy
+- **写前校验**：先 `ls ~/.hermes/wiki/` 定位目标页（勿用默认 `~/wiki`）；带 frontmatter 的页面更新后 bump `updated`、保持 ≥2 `[[wikilinks]]`、tag 来自 SCHEMA taxonomy
 - 写 inbox 文件时用模板：`# <YYYY-MM-DD> <主题>` + 结论/上下文/经验/后续
+- **每次写入后追加 `~/.hermes/wiki/log.md`** 一条：`## [YYYY-MM-DD] update \| <文件>（内容摘要）`
 - **汇报末尾固定行**：`📥 已沉淀：<路径> — <一句话>`；缺失 = 流程未闭环（用户可见，不靠自觉）
 - 所有落盘文本不写无法溯源的模型归属（只写"用户确认 + MOA 评审执行"或明确日期）
 ```

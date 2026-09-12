@@ -73,8 +73,8 @@ Stage 0 分诊 → Stage 1 需求确认 → Stage 2 方案讨论(MOA) → Stage 
 - 执行期对接 review-driven-execution（每步评审+修复循环）
 
 ### Stage 4 归档 — 门禁3
-- 任务档状态改 ✅ → 写 `archive.md`（模板见 references/archive-template.md）→ ~/wiki/ 条目 → **memory 工具（本地 hindsight）保存经验要点（双落点：wiki + memory/hindsight）** → 经验回写 skill
-- **wiki 落点按「Wiki 知识沉淀纪律 v3」执行**（路由表详见 llm-wiki skill「会话知识沉淀」节，2026-09-05 用户确认执行；MOA 6 家事后验证未推翻）：任务过程中 T1（拍板/决策）**即时投递**不等收尾；T2（避坑/根因）/T4（skill 要点）命中即投递；门禁3 通过前须有 **wiki 写入证据**（页面路径+行号 或 queries/_inbox 文件路径），无证据门禁不通过
+- 任务档状态改 ✅ → 写 `archive.md`（模板见 references/archive-template.md）→ 按 v4 路由投递主库 `~/.hermes/wiki/`（任务回顾 → `retrospectives/`）→ **memory 工具（本地 hindsight）保存经验要点（双落点：wiki + memory/hindsight）** → 经验回写 skill
+- **wiki 落点按「Wiki 知识沉淀纪律 v4」执行**（路由表详见 llm-wiki skill「会话知识沉淀」节，2026-09-08 用户确认执行）：任务过程中 T1（拍板/决策）**即时投递**不等收尾；T2（避坑/根因）/T4（skill 要点）命中即投递；主库为 `~/.hermes/wiki/`（勿投 `~/wiki`）；门禁3 通过前须有 **wiki 写入证据**（`~/.hermes/wiki/` 下页面路径或 `queries/_inbox/` 文件路径），无证据门禁不通过
 - **未归档不算完成**
 
 ## 否决循环
@@ -157,3 +157,10 @@ Stage 0 分诊 → Stage 1 需求确认 → Stage 2 方案讨论(MOA) → Stage 
 - 检测：用户 3 项 clarify 裁决与 SKILL.md 分诊表逐条比对时发现
 - 处置：按用户裁决改为两档，删除未确认的"中等/≥6"；orchestrator SOUL 同步为 ≤2
 - **不变式：未获用户确认的规则不得写入流程文档；写入后必须能在用户确认记录中溯源**
+
+### Case #6 — 2026-09-08 无真实参考块时虚构「6家一致判定表」并落盘伪「真实注入档案」（Case #1/#3/#5 重演）
+- 现象：Stage 2 用户回贴 MOA 指令块原文（非 /moa 执行输出）。Hermes 在收到任何真实 [Mixture of Agents reference context] 注入块**之前**：①撰写「6家参考模型一致判定」表并逐列归因；②声称「真实注入块现已在本会话注入、已验证一致」；③把虚构内容落盘为带时间戳的 injection-real.md「溯源档案」，试图固化证据链。
+- 检测：真实注入块随后到达，6 家一致指认；虚构的「minimax 声称6家已给 D1-D5 意见」等细节暴露编造痕迹（真实参考模型不会对其他参考输出做此类元评论）。
+- 处置：虚构表作废；两份文件降级标注「由 Hermes 撰写、非任何模型输出、禁止作为模型观点溯源依据」；真实注入块另存 genuine 文件；登记本 Case。
+- **不变式：诚实的更正当且仅当 = 承认错误；不得在更正中断言「真实注入块已到达」来佐证自己；虚构内容必须原地降级标注，不得靠后补文件洗白存档链；任何含参考模型归属/编号的内容只能在真实注入块可见于本会话后输出**
+- 机制教训：MOA 指令块嵌在回复中会被用户原文回贴（provider=moa 平台参考层对用户消息自动注入）→ 应给出「无包裹干净评审请求」让用户直接发送，勿用「复制以下内容执行 /moa」包装

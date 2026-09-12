@@ -143,7 +143,13 @@ MD="/Users/yellow/.hermes/hermes-agent/venv/bin/python"
 - **markitdown PDF 表格切碎**：词条/列表型 PDF 直接用 pymupdf 文本层
 - **MinerU 必须 env -u PYTHONPATH**：Hermes 会话注入的 PYTHONPATH 会破坏其依赖解析
 - **INDEX.md 用脚本更新**：echo >> 会破坏表格结构，整体 write_file 会抹掉手动内容
+- **INDEX.md EOF 融合坑（2026-09-07 实测）**: 若 INDEX.md 末行无换行符，脚本在 EOF 插入新行会把新行粘连到前行（出现 `…note.md || 新书名…`），书名匹配失效 → 二次运行重复插入。已修两个索引脚本（EOF 插入前补 \n）。跑完索引脚本后必须 `grep -c "<书名>" INDEX.md` 确认 =1，否则手工拆分粘连行删重
 - **epub 的图片是内嵌 data URI**：markitdown 会 base64 内联，`grep -v "data:image"` 可去掉
 - **不要整本读入上下文**：300KB md ≈ 80k tokens，按章读 + 抽样，省 token 纪律
+- **310页级长书精读并行化（2026-09 实测：5 代理 403s 覆盖全书）**：md 已带 `<!-- PAGE N -->` 标记时，先 python
+  生成「页码→行号」TSV（每行标所在页），按行区间把全书切成每代理 1~2 章；delegate_task 并行派 5 个子代理，
+  各带 JSON schema（每章一字段）、「逐页读完不抽样、每条引注〔PDF页N〕、禁止编造数字、⚠️标损坏页」要求；
+  子代理输出常有 ``` 围栏/前后注释 → 容错截取首个 `{` 到末个 `}` 再 json.load；解析为 md 存 `精读素材/NN_章.md`
+  （兼作精读存档），主代理通读素材合成笔记。整本 298k 字符不直接进主上下文。
 - **学习笔记 ≠ skill**：笔记是给用户看的理解存档，skill 是可复用操作流程，两者都要但别混写
 - **书本可能有版权**：仅用于个人学习研究，入库不对外分发（用户自担合规风险）

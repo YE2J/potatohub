@@ -49,6 +49,7 @@ coze agent at --mode response \
 | 400 `response does not match a collaboration request` | reply-to-message-id 用错（误用 message_id），或该请求已失效；⚠️ 也发生在**目标 agent 已被删除**（turn aborted: agent_deleted -32020）——请求随原 agent 一起死亡，id 再对也回不上 | 先 `coze agent member list` 确认自己还在、发起方还在；若本地侧是新实例接管，别再重试 response，走下方「接管/补交场景」改发 request |
 | E1103 `MISSING_OPTION` | **request 模式也强制要 `--reply-to-message-id`**（权威文档没标 request 的必填性） | 用当前 turn coze-context 的 `reply_to_message_id`（普通群聊消息时 = message_id）补上 |
 | E1000 `Invalid --targets: expected a JSON array` | targets 内含未转义换行/引号，被 shell 破坏 | 见下「JSON 构造铁律」：Python json.dumps 落盘再读入 |
+| `1000500 RPC调用错误` | `--reply-to-message-id` 用了**对方 response 消息的 id**——那条消息是回执、不是发给我的 request，不构成可回复的协作请求 | 改用**当前 turn** coze-context 的 `message_id`/`reply_to_message_id` 重发（同参数一次即通） |
 | 500 `at_agent service is unavailable` | 扣子平台侧服务故障，与本地无关 | 停止手动高频重试，走降级流程 |
 | 认证错误 | token 问题 | `coze auth status --format json` |
 
@@ -95,6 +96,26 @@ coze agent at --mode request \
 ```
 
 成功判据同 response：`code=0` + `data.status="accepted"` + `data.message_id` 非空。
+
+## 双 Agent 自动同步（文件信号通道）
+
+当协作需要「不每次手动喊同步」且对方无常驻进程时，用共享目录 `sync/` 文件通道 + @ 双保险（REQ/RSP 命名、头部字段、seq 幂等、超时告警、死循环防护、端到端 selftest 验收全部见 `references/sync-file-channel.md`）。核心：**文件通道只是留档+兜底，@ 才是主通道**；hermes cron 的 `--monitor-script` 与 `--no-agent` 互斥，no-agent 轮询不能唤起 agent 处理文件。
+
+### 🔴 用户要求：任务完成 → 主动 @ 对方，不要每次问「要不要同步」
+
+用户明确纠正过：完成任何评审/分析/交付物后，应**自动**把结论 @ 发起方（写 `sync/RSP_*` + 即时 at_agent request），不必先问「要我同步吗」。提问式同步在用户眼里等于没做自动化。
+
+落点：把「产出结论 → 落 RSP → @ 对方」作为任务收尾的固定一步，仅在「需要用户裁决」「跨项目影响」「对外发送」三类事项上才停下来确认。
+
+### 能力边界（勿承诺自动化做不到的事）
+
+| 环节 | 能否自动 | 说明 |
+|------|:--------:|------|
+| 对方写 REQ → 我侧发现 | ✅ | cron `*/10` no-agent 扫 `[to:我] + status=open`，命中输出非空留痕 |
+| 我发现后**实际处理** | ⚠️ | no-agent 脚本只能检测，**唤起处理仍靠对方 @ 我**（cron 不能注入会话） |
+| 我产出 RSP → **自动 @ 对方** | ❌ | 需 agent 在会话中跑 `coze agent at`；cron 无法代发 @。**不要把这条写成已实现** |
+
+→ 向用户/对方描述同步机制时必须区分「已实现」（文件留痕 + @ 主通道）与「未实现」（cron 自动代发 @），否则会被当成链路故障反复追问。
 
 ## 陷阱清单
 

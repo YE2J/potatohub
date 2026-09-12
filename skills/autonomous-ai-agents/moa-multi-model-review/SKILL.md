@@ -82,6 +82,7 @@ fanout: per_iteration          # 派发模式
 | **config.yaml 边界错位** | moa 段后缺换行导致 `fanout: per_iterationskills:` 拼在一起 | 用 `sed -i ''` 修复断行 |
 | **sed 按模型名插入误伤** | 模型名在配置其他段重复出现（如 `mimo-v2.5` 同时是 `auxiliary.vision.model` 和 moa 参考模型），`sed -i '' '/model: mimo-v2.5/a\...'` 会插入 2 处，破坏 YAML（报 `mapping values are not allowed in this context`） | 插入前 `grep -c <模型名> config.yaml` 确认唯一；不唯一时用 `sed -n '170,190p'` 查看行号后按行号定位（`sed -i '' 'N,Md'` 删除误插行）。Hermes 解析失败会自动存 `config.yaml.corrupt.<时间戳>.bak` 副本 |
 | **provider 名称写错（最常见）** | `hermes moa list` 显示正确，但实际调用时 provider 报错 | 用 `hermes doctor` 或查 `auth.json` 确认真实 provider 名，逐项比对 |
+| **alibaba-coding-plan 直测默认国际端点报 401**（2026-09-07 实测） | 手测 `https://coding-intl.dashscope.aliyuncs.com/v1` + ALIBABA_CODING_PLAN_API_KEY 返回 `invalid_api_key`，误判 key 失效 | `.env` 有 `ALIBABA_CODING_PLAN_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1`（国内端点）覆盖默认值；**Qwen 实际走该国内端点**，用 `grep '^ALIBABA_CODING_PLAN_BASE_URL=' ~/.hermes/.env` 确认后再测；大陆 IP 下国内端点才通 |
 
 ## MOA 故障诊断（当参考模型不工作时）
 
@@ -90,7 +91,7 @@ fanout: per_iteration          # 派发模式
 ### 步骤 1：查认证池确认真实 provider 名
 
 ```bash
-cat ~/.hermes/state-snapshots/latest/auth.json | python3 -c "
+cat ~/.hermes/auth.json | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 pool = d.get('credential_pool', {})
@@ -191,8 +192,8 @@ hermes moa list     # 确认显示正确
 
 ```bash
 # 方式一：重启 Hermes Desktop（缓存刷新）
-# 方式二：删除凭证池缓存让系统重建
-rm ~/.hermes/state-snapshots/latest/auth.json
+# 方式二：删除凭证池缓存让系统重建（真实位置为 ~/.hermes/auth.json；凭证以 secret_fingerprint 存引用、无明文 value 字段，真实 key 在 .env 由 source: env:<VAR> 指明，勿误判为空）
+rm ~/.hermes/auth.json
 # 下次 MOA 调用时会自动重建凭证池
 ```
 

@@ -113,11 +113,20 @@ pandoc "input.docx" -o "output.md" --extract-media=./media_out --wrap=none
   doc = pymupdf.open("input.pdf")
   for pno, page in enumerate(doc):
       for img in page.get_images(full=True):
-          pix = pymupdf.Pixmap(doc, img[0])
-          if pix.n - pix.alpha >= 4:
-              pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
-          pix.save(f"p{pno+1}_x{img[0]}_{pix.width}x{pix.height}.png")
+          xref, pix = img[0], pymupdf.Pixmap(doc, img[0])
+          for _ in range(3):            # 单次色彩空间守卫不可靠，失败再强转
+              try:
+                  pix.save(f"p{pno+1:03d}_x{xref}_{pix.width}x{pix.height}.png")
+                  break
+              except Exception:         # 'pixmap must be grayscale or rgb to write as png'
+                  pix = pymupdf.Pixmap(pymupdf.csRGB, pix)
   ```
+  - **色彩空间守卫不可靠（2026-09 实测 45 图 32 失败）**: `pix.n - pix.alpha >= 4`
+    在含 indexed/alpha/smask 变体时漏判，报 `pixmap must be grayscale or rgb to
+    write as png`；**用 try-save → except → `Pixmap(csRGB, pix)` 重试环兜底**
+    （实测重试环 45/45 成功）。
+  - 数学/公式型 PDF 的文本层上下标会断行错乱（markitdown 与 pymupdf 皆然），
+    这是文本层固有限制非转换失败；公式以原 PDF/图像为准。
   若提取为空 → 报告标「PDF 图片提取受限」。
 - **markitdown[pdf] 依赖（2026-08 已补装）**: 默认 markitdown 缺 PDF 支持，
   报 `MissingDependencyException: include [pdf]`。已 `pip install 'markitdown[pdf]' pymupdf` 到
@@ -143,6 +152,20 @@ pandoc "input.docx" -o "output.md" --extract-media=./media_out --wrap=none
    ≈ 80k tokens if read at once; per-section reads cost only that section.
 4. Batch scenario: convert N docs to md first, scan outlines, then deep-read
    only the 1–2 that matter (avoids per-file head+tail truncation waste).
+
+### Long-PDF outline + sampling (长PDF大纲与抽样，2026-09 实测 355 页书)
+
+- 转长 PDF 时逐页包 `<!-- PAGE N -->` 标记（pymupdf 每页 `get_text("text", sort=True)`
+  拼接），后续按页码正则切片读取，零成本定位任意页。
+- **内嵌书签可能全是页码占位（2026-09-07 实测 310 页书）**: `doc.get_toc()` 返回 300 条 L1 但标题全是纯数字
+  （1..300，即印刷目录的页码行被当成了书签标题）→ 与返回空一样，仍需手工解析印刷目录页。
+  判断法：过滤标题 `t[1].strip().isdigit()` 后若剩 0~6 条（仅封面/前言/封底）→ 书签不可用。
+- PDF 无内嵌书签（`doc.get_toc()` 返回空）时手工解析印刷目录页：条目=标记行(第X章/节号)
+  →标题行→页码行；标题行带点线（····），判据用**「含中文」勿用「不含·」**，
+  否则跳过标题行把页码当标题（实测首版解析即踩此坑）。
+- 章名关键词**首次命中常落在目录/前言/表格目录**而非正文（如「概论」先命中文档第7页
+  目录，正文在第19页）——定位正文用①正文偏移法：页脚印刷页码≈PDF页码−前置偏移
+  （先取一两页正文校准）；②正文专属词法：搜目录不出现的词（「排队论」「Hawkes」）。
 
 ## Batch Analysis Mode (批量分析模式, v2.5.1)
 
@@ -214,6 +237,8 @@ for i, t in enumerate(texts): print(i, repr(t))
   `(e-e-2x)` 应为 `(e^x-e^{-x}-2x)`、`e(cos x-1)` 应为 `e^x(cos x-1)`）。
 - 缺漏清单**宁全勿漏**：漏报比多报更误导（用户会误以为文档没问题）。
 - 数学类内容的验算要点/公式表/已验证资料见 `references/math-formula-verification.md`。
+- 长数学论文/预印本的结构化消化流程（定理地图+抽样精读+外部核实+标度复算边界）见
+  `references/math-paper-digest.md`。
 
 **步骤 2 — 图片发现 + 预过滤（0 token）**
 - 提取：docx/pptx/xlsx → `unzip -o doc.docx word/media/`；PDF → pandoc `--extract-media`（注意嵌套 `DIR/media/`，用 `find` 找图）。
@@ -282,12 +307,13 @@ echo "<该图解读要点，2-4 行>" >> "$CACHE_DIR/progress.md"
   3. 同名 `.report.md`（融合式分析报告，来自缓存目录）
   4. `images/` 子目录（提取的全部图片，与 report.md 末尾「图表文件索引」表对应）
   步骤：先 `cp` 原文件与 md 转换文件 → `mkdir -p <dir>/images && cp <图目录>/*.png <dir>/images/` → `cp` report.md。图片/md 转换产物勿只留在 /tmp（重启即丢）。
-- 类型表（新类型需与用户确认后添加）：
+- 类型表（新类型默认先声明再启用：微信等无法送达 clarify 表单时，用纯文本选项表+「默认按 ① 执行，无回复即确认」，用户后续消息未反对即视为已确认）：
   | 编号 | 类型 | 适用 |
   |---|---|---|
   | 01_量化研究 | 研报/策略/因子/回测/书籍附录 | |
   | 02_学习资料 | 教材/讲义/课程/词汇 | |
   | 03_工程方案 | 弱电/网络/IT/建筑方案 | |
+  | 04_学术论文 | 数学/物理等学术论文与预印本（2026-09-09 启用） | |
 - 文件名规则：取可读语义名（如 `机器学习与因子投资-附录3-Python代码.pdf`），不用 hash 名；**md5 相同的重复副本（如 `-2.docx`）跳过不重复入库**
 - 原文件不在 attachments（如 /tmp 分析）→ **先查上传缓存**
   `~/.hermes/cache/documents/doc_<hash>_<原名>`（2026-08-11 实测：报告标"原件丢失"
@@ -407,6 +433,10 @@ echo "<该图解读要点，2-4 行>" >> "$CACHE_DIR/progress.md"
   无任何内嵌文字——标题/作者/日期全部在 PDF 文本层，vision 报"无文字"是正常的，
   **不是坏图**。处理：封面图标「纯装饰封面，文字由文本层渲染」，不必重复 vision
   追问；判断封面是否为装饰性，可先看文本层首页是否已含标题/作者，一致则跳过。
+- **LaTeX/pdfTeX 论文 PDF 常 0 张位图（2026-09 实测 166 页数学预印本）**: 插图全为矢量
+  （TikZ/PDF 绘图），`page.get_images(full=True)` 计数为 0，文本层只有图注与坐标残留。
+  **先统计光栅图数再决定 vision**：0 张 → 跳过 vision 阶段，报告注明「图 N–M 为矢量示意，
+  未做视觉分析」；勿按正文图注数量误判有待分析位图。
 
 ## Verification
 

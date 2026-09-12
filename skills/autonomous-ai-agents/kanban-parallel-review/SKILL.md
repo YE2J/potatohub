@@ -462,6 +462,9 @@ Workers can crash or timeout at runtime. The system handles this in layers:
 
 ## Pitfalls
 
+- **任务 body 里的事实断言必须先自验（含 exit code）**：写进评审卡背景的「消费侧=0 / 无引用 / 从未执行」类判据，若没核 rc 就发卡，会被 worker 集体证伪，一轮评审的时间全花在校正前提上。实测教训（2026-09-12）：发起方用 `timeout 60 grep -rl … 2>/dev/null` 得到「0 引用」，实际 macOS 无 `timeout` 命令 → rc=127、stderr 被吞 → 命令根本没跑；4/5 worker 实测打回。**发卡前对每条判据命令跑一遍并记录 rc + 输出**，rc≠0 的结论不得写入背景；判据性 grep 禁用 `2>/dev/null`。
+- **卡完成后默认自动归档**：worker 产出的 md 在 `~/.hermes/kanban/attachments/<task_id>/`（归档保留），摘要仍在 `hermes kanban show <id>` 的 Latest summary；**orchestrator 汇总卡可直接引用 attachments 路径**（无需 parent 依赖）——这是无 parents 模式下最稳的汇总入参方式。
+
 - **kanban_await.py timeout near-miss**: 当运行缓慢的 worker（如 xiaomi 耗时 545s）接近 600s 超时时，可能恰好在上次轮询后、超时检查前完成。kanban_await.py **不含 --extra-ticks 参数**（该参数不存在），超时后直接 exit code 1 退出。**兜底措施**：超时后立即用 `hermes kanban show <id>` 手动检查各卡状态——部分卡可能已在超时边缘完成。如果有多张卡同时等，先检查所有卡再决定是否重跑。对于预估超时的场景，直接使用 `--timeout 900`。 |
 - **parents deadlock (已在新流程中规避)**: 如果仍使用 `parents=[...]` 且 worker 失败，synthesis 卡永久死锁。解决办法：创建不带 parents 的 fallback 卡，或手动 `kanban show` 读结果。
 - **Orchestrator 自崩溃**: orchestrator 被派发后它的模型调用可能失败。此时 worker 已完成但无人合成。恢复：`kanban show t1/t2/t3` 手动读取各 worker 结果自行总结。

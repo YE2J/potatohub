@@ -33,13 +33,16 @@ model:
   provider: deepseek
 
 agent:
-  reasoning_effort: low           # light reasoning for simple tasks
+  reasoning_effort: medium        # 实测值 2026-09-12（模板早前写 low，与实际不符）
 
 delegation:
-  model: deepseek-v4-pro         # strong model for complex tasks
+  model: deepseek-v4-flash        # 实测值：与主模型同款，只抬升 effort；并非 v4-pro
   provider: deepseek
   reasoning_effort: high          # deep reasoning for complex tasks
 ```
+
+> ⚠️ 2026-09-12 实测校正：本 skill 早期版本的示例写着 `delegation.model: deepseek-v4-pro` + `agent.reasoning_effort: low`，
+> 与磁盘配置不符。主 profile 的 delegation 实际是**同款 flash + effort=high**——「更强推理」只体现在 effort 与多模型分工，不在模型档位。
 
 ### Per-Profile (worker agents)
 ```bash
@@ -59,12 +62,20 @@ Each agent's SOUL.md includes:
 
 ## Applicable Profiles
 
+实测值（2026-09-12，用 `hermes [-p X] config get <key>` 逐项核对，勿再凭记忆填写）：
+
 | Profile | Main model | Main reasoning | Delegation model | Delegation reasoning |
 |---------|-----------|----------------|-----------------|---------------------|
-| default | deepseek-v4-flash | low | deepseek-v4-pro | high |
-| orchestrator | deepseek-v4-flash | medium | deepseek-v4-pro | high |
-| worker-kimi | kimi-k2.7-code | low | kimi-k2.7-code | high |
-| worker-glm | glm-5 | low | glm-5 | high |
+| default | deepseek-v4-flash | medium | deepseek-v4-flash (deepseek) | high |
+| orchestrator | deepseek-v4-flash | medium | glm-5.1 (zai) | high |
+| worker-glm | glm-5.1 (z.ai) | low | glm-5.1 (z.ai) | high |
+| worker-kimi | kimi-k2.6 | low | 未配置 → 继承本 profile 主模型 | — |
+| worker-minimax | minimax-m2.7 | medium | deepseek-v4-flash (deepseek) | high |
+| worker-qwen | qwen3.7-plus | low | glm-5.1 (z.ai) | high |
+| worker-xiaomi | mimo-v2.5 | medium | deepseek-v4-flash (deepseek) | high |
+
+坑位提示：delegation 段若 `model` 留空，**继承本 profile 主模型**（`delegate_tool_config.py`: `effective_model = model or parent_agent.model`），
+不是继承 default profile——profiles 之间互相隔离。
 
 ## Notes
 
